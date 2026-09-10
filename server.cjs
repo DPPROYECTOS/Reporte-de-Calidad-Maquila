@@ -57,8 +57,8 @@ if (supabaseUrl && supabaseKey) {
 }
 async function startServer() {
   const app = (0, import_express.default)();
-  app.use(import_express.default.json({ limit: "15mb" }));
-  app.use(import_express.default.urlencoded({ extended: true, limit: "15mb" }));
+  app.use(import_express.default.json({ limit: "50mb" }));
+  app.use(import_express.default.urlencoded({ extended: true, limit: "50mb" }));
   app.get("/api/supabase/status", async (_req, res) => {
     try {
       if (!supabase || !supabaseUrl || !supabaseKey) {
