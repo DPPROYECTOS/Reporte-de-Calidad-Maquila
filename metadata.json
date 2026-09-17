@@ -1,0 +1,6 @@
+{
+  "name": "Inspección de Calidad Maquila",
+  "description": "Sistema interactivo de inspección poka-yoke móvil y gestión de calidad para el área de maquila según normativa técnica.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
