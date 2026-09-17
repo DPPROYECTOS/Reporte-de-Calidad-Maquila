@@ -9,6 +9,7 @@ dotenv.config();
 
 export default defineConfig(() => {
   return {
+    base: '/Reporte-de-Calidad-Maquila/',
     plugins: [
       react(),
       tailwindcss(),
