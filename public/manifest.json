@@ -1,0 +1,25 @@
+{
+  "name": "Reporte de Calidad Maquila",
+  "short_name": "Calidad",
+  "description": "Sistema móvil para registro de inspecciones y reportes de maquila",
+  "start_url": "/Reporte-de-Calidad-Maquila/",
+  "scope": "/Reporte-de-Calidad-Maquila/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020617",
+  "theme_color": "#ff0000",
+  "icons": [
+    {
+      "src": "/Reporte-de-Calidad-Maquila/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/Reporte-de-Calidad-Maquila/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
