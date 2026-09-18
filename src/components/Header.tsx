@@ -14,6 +14,7 @@ import {
   Database,
   Archive,
   FileText,
+  Download,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -27,6 +28,8 @@ interface HeaderProps {
   onExportZipPackage?: () => void;
   onExportWord?: () => void;
   onPrintLetter: () => void;
+  onDownloadOfficialPdf?: () => void;
+  isDownloadingPdf?: boolean;
   currentReportTitle: string;
   isPrintMode?: boolean;
   setIsPrintMode?: (val: boolean) => void;
@@ -50,6 +53,8 @@ export const Header: React.FC<HeaderProps> = ({
   onExportZipPackage,
   onExportWord,
   onPrintLetter,
+  onDownloadOfficialPdf,
+  isDownloadingPdf,
   currentReportTitle,
   zoomLevel,
   onZoomIn,
@@ -355,15 +360,31 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden xs:inline">Solo Excel</span>
           </button>
 
+          {/* Botón Descargar PDF Carta Oficial */}
+          {onDownloadOfficialPdf && (
+            <button
+              type="button"
+              onClick={onDownloadOfficialPdf}
+              disabled={isDownloadingPdf}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl font-bold shadow-md shadow-rose-950/20 border border-rose-400/30 transition active:scale-95 cursor-pointer"
+              title="Descargar Hoja Oficial en PDF tamaño Carta (Idéntico a la Vista Previa, 300 DPI)"
+            >
+              <Download className="w-3.5 h-3.5 text-white" />
+              <span className="hidden sm:inline">{isDownloadingPdf ? 'Generando PDF...' : 'PDF Carta'}</span>
+              <span className="sm:hidden">PDF</span>
+            </button>
+          )}
+
           {/* Print / PDF Letter Size */}
           <button
             type="button"
             onClick={onPrintLetter}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-white text-slate-950 hover:bg-slate-100 rounded-xl font-black shadow-md border border-white transition active:scale-95"
-            title="Vista Previa e Imprimir en Tamaño Carta / PDF"
+            title="Vista Previa e Imprimir en Tamaño Carta / PDF del Navegador"
           >
             <Printer className="w-3.5 h-3.5 text-slate-950" />
-            <span>Imprimir Carta / PDF</span>
+            <span className="hidden sm:inline">Imprimir Carta</span>
+            <span className="sm:hidden">Imprimir</span>
           </button>
         </div>
       </div>

@@ -70,7 +70,7 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
       }
     });
 
-    // If sampleSizeInspected is 0, auto-set to required sample size since defects were found
+    // If sampleSizeInspected is 0, auto-set to required sample size since inspection is in progress
     const currentInspected = report.sampleSizeInspected > 0 
       ? report.sampleSizeInspected 
       : (report.sampleSizeRequired || 50);
@@ -90,8 +90,8 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
       newTagColor = 'Amarilla';
     }
 
-    const defectRate = report.sampleSizeRequired > 0 
-      ? Number(((totalDefectives / report.sampleSizeRequired) * 100).toFixed(1))
+    const defectRate = currentInspected > 0 
+      ? Number(((totalDefectives / currentInspected) * 100).toFixed(1))
       : 0;
 
     onUpdateReport({
@@ -123,8 +123,58 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
     });
   };
 
-  // One-touch Poka-yoke "Todo conforme (0 defectos)": Sets sampleSizeInspected to required, resets defects, unlocks step 3
-  const handleMarkAllPerfect = () => {
+  // Confirm inspection intelligently: keeps defects if found, marks sample as verified
+  const handleConfirmInspection = () => {
+    const requiredSize = report.sampleSizeRequired > 0 ? report.sampleSizeRequired : 50;
+
+    let totalCritical = 0;
+    let totalMajor = 0;
+    let totalMinor = 0;
+    let totalDefectives = 0;
+
+    report.defectItems.forEach((item) => {
+      if (item.defectsFound > 0) {
+        totalDefectives += item.defectsFound;
+        if (item.severity === 'Critico') totalCritical += item.defectsFound;
+        if (item.severity === 'Mayor') totalMajor += item.defectsFound;
+        if (item.severity === 'Menor') totalMinor += item.defectsFound;
+      }
+    });
+
+    let newStatus = report.status;
+    let newTagColor = report.tagColor;
+
+    if (totalCritical > 0 || totalDefectives >= report.reLimit) {
+      newStatus = 'RECHAZADO';
+      newTagColor = 'Roja';
+    } else if (totalDefectives <= report.acLimit) {
+      newStatus = 'APROBADO';
+      newTagColor = 'Verde';
+    } else {
+      newStatus = 'CONDICIONADO';
+      newTagColor = 'Amarilla';
+    }
+
+    const defectRate = requiredSize > 0 
+      ? Number(((totalDefectives / requiredSize) * 100).toFixed(1))
+      : 0;
+
+    onUpdateReport({
+      ...report,
+      sampleSizeInspected: requiredSize,
+      totalCritical,
+      totalMajor,
+      totalMinor,
+      totalDefectives,
+      defectRatePercentage: defectRate,
+      status: newStatus,
+      tagColor: newTagColor,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  // Reset all defects to zero only if supervisor explicitly requests a clean restart
+  const handleResetAllToZero = () => {
     const requiredSize = report.sampleSizeRequired > 0 ? report.sampleSizeRequired : 50;
     const updatedItems = report.defectItems.map((item) => ({
       ...item,
@@ -159,15 +209,6 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
     });
   };
 
-  const handleConfirmSampleSize = () => {
-    const required = report.sampleSizeRequired || 50;
-    onUpdateReport({
-      ...report,
-      sampleSizeInspected: required,
-      updatedAt: new Date().toISOString(),
-    });
-  };
-
   // Categories list
   const categories = [
     'TODAS',
@@ -194,36 +235,36 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
 
   return (
     <div className="space-y-4 pb-32 sm:pb-28">
-      {/* 1. SEMÁFORO EN VIVO */}
+      {/* 1. BARRA COMPACTA: SEMÁFORO Y MUESTREO AQL EN TIEMPO REAL */}
       <div
-        className={`p-4 rounded-2xl border-2 shadow-sm transition-all ${
+        className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs transition-all ${
           !isInspectionCompleted
-            ? 'bg-neutral-800 text-white border-neutral-900'
+            ? 'bg-neutral-900 text-white border-neutral-800'
             : isApproved
-            ? 'bg-emerald-600 text-white border-emerald-700'
+            ? 'bg-emerald-700 text-white border-emerald-800'
             : isRejected
-            ? 'bg-red-600 text-white border-red-700'
-            : 'bg-amber-500 text-neutral-950 border-amber-600'
+            ? 'bg-red-700 text-white border-red-800'
+            : 'bg-amber-600 text-neutral-950 border-amber-700'
         }`}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
           <div className="flex items-center space-x-2.5">
             {!isInspectionCompleted ? (
-              <AlertCircle className="w-7 h-7 text-amber-400 shrink-0" />
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
             ) : isApproved ? (
-              <CheckCircle2 className="w-7 h-7 text-white shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-200 shrink-0" />
             ) : isRejected ? (
-              <XCircle className="w-7 h-7 text-white shrink-0 animate-bounce" />
+              <XCircle className="w-5 h-5 text-red-200 shrink-0" />
             ) : (
-              <AlertTriangle className="w-7 h-7 text-neutral-950 shrink-0" />
+              <AlertTriangle className="w-5 h-5 text-amber-200 shrink-0" />
             )}
             <div>
-              <div className="text-[10px] font-black uppercase tracking-widest opacity-90">
-                Semáforo de Inspección en Tiempo Real
+              <div className="text-[10px] font-black uppercase tracking-wider opacity-85">
+                Semáforo en Tiempo Real
               </div>
-              <div className="text-lg sm:text-xl font-black tracking-wide leading-none mt-0.5">
+              <div className="text-sm sm:text-base font-black tracking-wide leading-tight">
                 {!isInspectionCompleted
-                  ? 'EN ESPERA DE INSPECCIÓN (RESET)'
+                  ? 'EN ESPERA DE REVISIÓN DE MUESTRA'
                   : isApproved
                   ? 'LOTE APROBADO (ETIQUETA VERDE)'
                   : isRejected
@@ -232,244 +273,184 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
               </div>
             </div>
           </div>
+
+          <div className="flex items-center space-x-2 shrink-0">
+            {/* Botón Matriz de Defectos (Ventana) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenComboDefectsModal) {
+                  onOpenComboDefectsModal();
+                } else {
+                  setShowComboDefectsManager(!showComboDefectsManager);
+                }
+              }}
+              className="text-[11px] font-black text-neutral-900 bg-white hover:bg-neutral-100 border border-neutral-300 px-2.5 py-1 rounded-xl flex items-center space-x-1.5 transition active:scale-95 shadow-2xs cursor-pointer"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-700" />
+              <span>Matriz Defectos</span>
+            </button>
+          </div>
         </div>
 
-        {/* Barra de conteo de piezas malas */}
-        <div className="mt-3 bg-black/20 rounded-xl p-2.5 flex items-center justify-between text-xs font-bold">
-          <div>
-            <span>Defectos encontrados: </span>
-            <span className="font-mono font-black text-sm bg-white/30 px-2 py-0.5 rounded-md ml-1">
-              {report.totalDefectives}
+        {/* Resumen numérico rápido de muestreo */}
+        <div className="mt-2.5 pt-2 border-t border-white/15 flex items-center justify-between text-xs flex-wrap gap-y-1">
+          <div className="flex items-center space-x-2">
+            <span className="opacity-80 text-[11px]">Muestra requerida:</span>
+            <span className="font-mono font-black text-white bg-white/20 px-1.5 py-0.5 rounded text-xs">
+              {report.sampleSizeRequired} pz
+            </span>
+            <span className="opacity-70 text-[10px] hidden sm:inline">
+              (Nivel {report.inspectionLevel} | Letra {report.codeLetter})
             </span>
           </div>
-          <div className="text-[11px] opacity-90">
-            Límite Ac: <strong className="font-mono">{report.acLimit} pzas</strong> | Rechazo: <strong className="font-mono">{report.reLimit}+ pzas</strong>
+
+          <div className="flex items-center space-x-2">
+            <span className="opacity-80 text-[11px]">Defectos encontrados:</span>
+            <span
+              className={`font-mono font-black text-xs px-2 py-0.5 rounded ${
+                report.totalDefectives > 0
+                  ? 'bg-red-500 text-white animate-pulse'
+                  : 'bg-white/20 text-white'
+              }`}
+            >
+              {report.totalDefectives} pz
+            </span>
+            <span className="opacity-70 text-[10px]">
+              (Ac: {report.acLimit} | Re: {report.reLimit})
+            </span>
           </div>
         </div>
 
         {isRejected && (
-          <div className="mt-2 text-xs bg-white/20 p-2 rounded-lg font-bold flex items-center space-x-1.5">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>Atención: Lote supera límite AQL. Se requerirá plan de acción y cuarentena.</span>
+          <div className="mt-2 text-xs bg-red-900/60 border border-red-400/50 p-2 rounded-lg font-bold flex items-center space-x-1.5">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300" />
+            <span>Atención: El lote supera el límite AQL de rechazo. Se requerirá cuarentena.</span>
           </div>
         )}
       </div>
 
-      {/* 2. CONTROL POKA-YOKE: REGISTRO DE MUESTRA FÍSICAMENTE INSPECCIONADA */}
-      <div className={`p-4 rounded-2xl border-2 shadow-xs transition ${
-        isInspectionCompleted 
-          ? 'bg-white border-emerald-300' 
-          : 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300/50'
-      }`}>
-        <div className="flex items-center justify-between border-b border-neutral-100 pb-2 mb-3">
+      {/* Panel Desplegable de Respaldo para Administrar Defectos */}
+      {showComboDefectsManager && !onOpenComboDefectsModal && (
+        <div className="animate-in fade-in">
+          <ComboDefectManager report={report} onUpdateReport={onUpdateReport} />
+        </div>
+      )}
+
+      {/* 2. ENCABEZADO DE DEFECTOS Y FILTROS (EN PRIMER PLANO) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between px-1">
           <div className="flex items-center space-x-2">
-            <Layers className="w-4 h-4 text-neutral-800" />
-            <h3 className="font-bold text-xs uppercase tracking-wider text-neutral-900">
-              Control de Muestreo Físico: <span className="text-red-500">*</span>
-            </h3>
+            <Layers className="w-4 h-4 text-neutral-800 shrink-0" />
+            <span className="text-xs font-black uppercase tracking-wider text-neutral-900">
+              Criterios Físicos a Evaluar ({report.defectItems.length}):
+            </span>
           </div>
-          <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border font-mono ${
-            isInspectionCompleted 
-              ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-              : 'bg-amber-100 text-amber-900 border-amber-300'
-          }`}>
-            {isInspectionCompleted ? '✓ Muestra Registrada' : '❌ Pendiente (Reset)'}
+
+          <span className="text-[11px] font-bold text-neutral-600">
+            {report.totalDefectives === 0
+              ? 'Todos conformes'
+              : `${report.totalDefectives} ${report.totalDefectives === 1 ? 'falla detectada' : 'fallas detectadas'}`}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-          <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-            <span className="text-[10px] font-bold text-neutral-500 uppercase block">
-              Muestra Requerida por Norma AQL:
-            </span>
-            <div className="text-xl font-black font-mono text-neutral-900 mt-0.5">
-              {report.sampleSizeRequired} piezas
-            </div>
-            <span className="text-[10px] text-neutral-500">
-              Nivel: {report.inspectionLevel} | Letra: {report.codeLetter}
-            </span>
-          </div>
-
-          <div className={`p-3 rounded-xl border-2 flex items-center justify-between ${
-            isInspectionCompleted 
-              ? 'bg-emerald-50 border-emerald-300' 
-              : 'bg-white border-amber-400'
-          }`}>
-            <div>
-              <span className="text-[10px] font-bold text-neutral-700 uppercase block">
-                Piezas Inspeccionadas:
-              </span>
-              <div className="text-2xl font-black font-mono text-neutral-950 mt-0.5">
-                {report.sampleSizeInspected || 0} <span className="text-xs font-sans font-bold text-neutral-500">pz</span>
-              </div>
-            </div>
-
-            {/* Ajuste manual de piezas inspeccionadas */}
-            <div className="flex items-center space-x-1">
+        {/* Solo mostrar filtros si hay más de 5 criterios para no saturar la pantalla a la supervisora */}
+        {report.defectItems.length > 5 && (
+          <div className="space-y-2">
+            {/* Filtros de Severidad */}
+            <div className="grid grid-cols-4 gap-1.5 text-center">
               <button
                 type="button"
-                onClick={() => handleAdjustInspected(-5)}
-                disabled={report.sampleSizeInspected === 0}
-                className="w-8 h-8 rounded-lg bg-white border border-neutral-300 font-bold text-xs flex items-center justify-center disabled:opacity-30 active:scale-95"
-                title="Restar 5"
-              >
-                -5
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAdjustInspected(5)}
-                className="w-8 h-8 rounded-lg bg-white border border-neutral-300 font-bold text-xs flex items-center justify-center active:scale-95"
-                title="Sumar 5"
-              >
-                +5
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Botón de Confirmación Rápida de Inspección Conforme */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={handleMarkAllPerfect}
-            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shadow-sm border border-emerald-500"
-          >
-            <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
-            <span>✓ Confirmar Muestra Completa de {report.sampleSizeRequired} Piezas Conforme (0 Defectos)</span>
-          </button>
-
-          {!isInspectionCompleted && (
-            <div className="bg-amber-100/70 border border-amber-300 p-2.5 rounded-xl text-[11px] text-amber-900 flex items-start space-x-2">
-              <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-              <span>
-                <strong>Candado Poka-Yoke Paso 2:</strong> Este paso inicia en reset. Si la muestra estuvo perfecta, pulsa el botón verde arriba. Si encontraste defectos, usa los botones (+) en los criterios de abajo.
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 3. FILTROS Y CONFIGURACIÓN DE DEFECTOS DEL COMBO */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between px-1">
-          <div className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
-            Defectos a Evaluar en este Combo:
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (onOpenComboDefectsModal) {
-                onOpenComboDefectsModal();
-              } else {
-                setShowComboDefectsManager(!showComboDefectsManager);
-              }
-            }}
-            className="text-xs font-bold text-neutral-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2.5 py-1 rounded-xl flex items-center space-x-1 transition active:scale-95 shadow-2xs"
-          >
-            <Settings className="w-3.5 h-3.5 text-amber-800" />
-            <span>🧩 Matriz de Defectos (Ventana)</span>
-          </button>
-        </div>
-
-        {/* Panel Desplegable de Respaldo */}
-        {showComboDefectsManager && !onOpenComboDefectsModal && (
-          <div className="animate-in fade-in">
-            <ComboDefectManager report={report} onUpdateReport={onUpdateReport} />
-          </div>
-        )}
-
-        {/* Filtros de Severidad (Críticos, Mayores, Menores) */}
-        <div className="grid grid-cols-4 gap-1.5 text-center">
-          <button
-            type="button"
-            onClick={() => setActiveSeverityFilter('TODOS')}
-            className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition ${
-              activeSeverityFilter === 'TODOS'
-                ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
-                : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50'
-            }`}
-          >
-            Todos ({report.defectItems.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSeverityFilter('Critico')}
-            className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition flex items-center justify-center space-x-1 ${
-              activeSeverityFilter === 'Critico'
-                ? 'bg-red-600 text-white border-red-700 shadow-xs'
-                : 'bg-red-50 text-red-800 border-red-200 hover:bg-red-100'
-            }`}
-          >
-            <span>🚨 Críticos</span>
-            <span className="font-mono text-[10px] font-black">
-              ({report.defectItems.filter((i) => i.severity === 'Critico').length})
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSeverityFilter('Mayor')}
-            className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition flex items-center justify-center space-x-1 ${
-              activeSeverityFilter === 'Mayor'
-                ? 'bg-amber-500 text-neutral-950 border-amber-600 shadow-xs font-black'
-                : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
-            }`}
-          >
-            <span>⚠️ Mayores</span>
-            <span className="font-mono text-[10px] font-black">
-              ({report.defectItems.filter((i) => i.severity === 'Mayor').length})
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSeverityFilter('Menor')}
-            className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition flex items-center justify-center space-x-1 ${
-              activeSeverityFilter === 'Menor'
-                ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
-                : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
-            }`}
-          >
-            <span>ℹ️ Menores</span>
-            <span className="font-mono text-[10px] font-black">
-              ({report.defectItems.filter((i) => i.severity === 'Menor').length})
-            </span>
-          </button>
-        </div>
-
-        {/* Filtro de Categorías */}
-        <div className="flex space-x-1.5 overflow-x-auto pb-1 no-scrollbar">
-          {categories.map((cat) => {
-            const isSelected = activeCategoryFilter === cat;
-            const countInCat = report.defectItems
-              .filter((i) => cat === 'TODAS' || i.category === cat)
-              .reduce((acc, curr) => acc + curr.defectsFound, 0);
-
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setActiveCategoryFilter(cat)}
-                className={`py-1.5 px-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center space-x-1.5 border ${
-                  isSelected
-                    ? 'bg-neutral-800 text-white border-neutral-800 shadow-xs'
-                    : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+                onClick={() => setActiveSeverityFilter('TODOS')}
+                className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition ${
+                  activeSeverityFilter === 'TODOS'
+                    ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
+                    : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50'
                 }`}
               >
-                <span>{cat}</span>
-                {countInCat > 0 && (
-                  <span className="bg-red-500 text-white font-mono text-[10px] px-1.5 py-0.2 rounded-full font-black">
-                    {countInCat}
-                  </span>
-                )}
+                Todos ({report.defectItems.length})
               </button>
-            );
-          })}
-        </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveSeverityFilter('Critico')}
+                className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition flex items-center justify-center space-x-1 ${
+                  activeSeverityFilter === 'Critico'
+                    ? 'bg-red-600 text-white border-red-700 shadow-xs'
+                    : 'bg-red-50 text-red-800 border-red-200 hover:bg-red-100'
+                }`}
+              >
+                <span>🚨 Críticos</span>
+                <span className="font-mono text-[10px] font-black">
+                  ({report.defectItems.filter((i) => i.severity === 'Critico').length})
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveSeverityFilter('Mayor')}
+                className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition flex items-center justify-center space-x-1 ${
+                  activeSeverityFilter === 'Mayor'
+                    ? 'bg-amber-500 text-neutral-950 border-amber-600 shadow-xs font-black'
+                    : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                <span>⚠️ Mayores</span>
+                <span className="font-mono text-[10px] font-black">
+                  ({report.defectItems.filter((i) => i.severity === 'Mayor').length})
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveSeverityFilter('Menor')}
+                className={`py-1.5 px-1 rounded-xl text-xs font-bold border transition flex items-center justify-center space-x-1 ${
+                  activeSeverityFilter === 'Menor'
+                    ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                    : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+                }`}
+              >
+                <span>ℹ️ Menores</span>
+                <span className="font-mono text-[10px] font-black">
+                  ({report.defectItems.filter((i) => i.severity === 'Menor').length})
+                </span>
+              </button>
+            </div>
+
+            {/* Filtro de Categorías */}
+            <div className="flex space-x-1.5 overflow-x-auto pb-1 no-scrollbar">
+              {categories.map((cat) => {
+                const isSelected = activeCategoryFilter === cat;
+                const countInCat = report.defectItems
+                  .filter((i) => cat === 'TODAS' || i.category === cat)
+                  .reduce((acc, curr) => acc + curr.defectsFound, 0);
+
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActiveCategoryFilter(cat)}
+                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center space-x-1.5 border ${
+                      isSelected
+                        ? 'bg-neutral-800 text-white border-neutral-800 shadow-xs'
+                        : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    {countInCat > 0 && (
+                      <span className="bg-red-500 text-white font-mono text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                        {countInCat}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 4. LISTA DE CRITERIOS CON BOTONES TÁCTILES (+ / -) */}
+      {/* 3. LISTA DE CRITERIOS CON CHECKLIST INTERACTIVO (ENFOQUE B) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {filteredItems.map((item) => {
           const hasDefect = item.defectsFound > 0;
@@ -479,7 +460,7 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
               key={item.id}
               className={`p-4 rounded-2xl border-2 transition shadow-xs ${
                 hasDefect
-                  ? 'bg-red-50/90 border-red-400'
+                  ? 'bg-red-50/90 border-red-400 ring-2 ring-red-300/40'
                   : 'bg-white border-neutral-200 hover:border-neutral-300'
               }`}
             >
@@ -498,7 +479,7 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
                     >
                       {item.severity === 'Critico' ? '🚨 Crítico' : item.severity === 'Mayor' ? '⚠️ Mayor' : 'Menor'}
                     </span>
-                    <span className="text-[10px] font-bold text-neutral-400 uppercase break-words">
+                    <span className="text-[10px] font-bold text-neutral-600 uppercase break-words">
                       {item.category}
                     </span>
                   </div>
@@ -506,52 +487,64 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
                   <h4 className="font-black text-sm text-neutral-900 mt-1 leading-snug break-words">
                     {item.name}
                   </h4>
-                  <p className="text-xs text-neutral-500 mt-0.5 leading-normal break-words">
+                  <p className="text-xs text-neutral-700 mt-0.5 leading-normal break-words">
                     {item.description || 'Verificar que cumpla con los estándares de maquila.'}
                   </p>
                 </div>
               </div>
 
-              {/* Botones de conteo táctil (+ / -) */}
-              <div className="mt-3.5 pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold text-neutral-700">¿Piezas con falla?</span>
-                </div>
+              {/* Botones de acción táctiles e intuitivos (Poka-Yoke) */}
+              <div className="mt-3.5 pt-3 border-t border-neutral-100 flex items-center justify-between gap-2 flex-wrap">
+                {!hasDefect ? (
+                  <>
+                    <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Sin Falla / Conforme</span>
+                    </div>
 
-                <div className="flex items-center space-x-2 bg-neutral-100 p-1 rounded-xl border border-neutral-300">
-                  <button
-                    type="button"
-                    disabled={item.defectsFound === 0}
-                    onClick={() => updateDefectItem(item.id, -1)}
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center font-black transition ${
-                      item.defectsFound === 0
-                        ? 'text-neutral-300 cursor-not-allowed bg-transparent'
-                        : 'bg-white text-neutral-900 active:scale-90 shadow-xs'
-                    }`}
-                    title="Restar 1 defecto"
-                  >
-                    <Minus className="w-5 h-5" />
-                  </button>
-
-                  <div className="w-10 text-center">
-                    <span
-                      className={`text-base font-black font-mono block ${
-                        hasDefect ? 'text-red-700' : 'text-neutral-800'
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => updateDefectItem(item.id, 1)}
+                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-700 hover:text-red-800 border border-red-300 font-black text-xs rounded-xl flex items-center space-x-1.5 transition cursor-pointer shadow-2xs"
                     >
-                      {item.defectsFound}
-                    </span>
-                  </div>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Reportar Defecto (+1)</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center space-x-1.5 text-xs font-black text-red-800 bg-red-100/80 px-2.5 py-1.5 rounded-xl border border-red-300">
+                      <ShieldAlert className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                      <span>Falla Registrada:</span>
+                    </div>
 
-                  <button
-                    type="button"
-                    onClick={() => updateDefectItem(item.id, 1)}
-                    className="w-10 h-10 bg-red-600 hover:bg-red-700 active:scale-90 text-white rounded-lg flex items-center justify-center font-black shadow-xs transition"
-                    title="Sumar 1 pieza con defecto"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                </div>
+                    <div className="flex items-center space-x-2 bg-white p-1 rounded-xl border border-red-300 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => updateDefectItem(item.id, -1)}
+                        className="w-8 h-8 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 active:scale-90 flex items-center justify-center font-black transition cursor-pointer"
+                        title="Restar 1 pieza"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+
+                      <div className="px-2 text-center">
+                        <span className="text-sm font-black font-mono text-red-700 block">
+                          {item.defectsFound} <span className="text-[10px] font-sans text-neutral-500">pz</span>
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => updateDefectItem(item.id, 1)}
+                        className="w-8 h-8 bg-red-600 hover:bg-red-700 active:scale-90 text-white rounded-lg flex items-center justify-center font-black shadow-2xs transition cursor-pointer"
+                        title="Sumar 1 pieza con falla"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Si hay defecto, mostrar campo para detalle opcional */}
@@ -564,7 +557,7 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
                     type="text"
                     defaultValue={item.description || ''}
                     onBlur={(e) => handleSetDescription(item.id, e.target.value)}
-                    placeholder="Ej. 2 piezas con rebaba o caja rota"
+                    placeholder="Ej. Pieza rayada, empaque roto, etiqueta desalineada"
                     className="w-full text-xs p-2 bg-neutral-50 border border-neutral-300 rounded-lg font-sans focus:outline-red-500"
                   />
                 </div>
@@ -572,6 +565,88 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
             </div>
           );
         })}
+      </div>
+
+      {/* 4. CONFIRMACIÓN INTELIGENTE AL FINAL DE LA LISTA DE CRITERIOS (ENFOQUE A) */}
+      <div
+        className={`p-4 rounded-2xl border-2 transition shadow-xs ${
+          report.totalDefectives > 0
+            ? 'bg-amber-50/80 border-amber-400'
+            : isInspectionCompleted
+            ? 'bg-emerald-50/80 border-emerald-400'
+            : 'bg-white border-neutral-300'
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div>
+            <h4 className="text-xs sm:text-sm font-black text-neutral-900 flex items-center space-x-1.5">
+              {report.totalDefectives > 0 ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Muestra con {report.totalDefectives}{' '}
+                    {report.totalDefectives === 1 ? 'defecto detectado' : 'defectos detectados'}
+                  </span>
+                </>
+              ) : isInspectionCompleted ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Muestra Completa Verificada: 0 Defectos</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Finalizar Revisión de Criterios Físicos</span>
+                </>
+              )}
+            </h4>
+            <p className="text-[11px] text-neutral-600 mt-0.5">
+              {report.totalDefectives > 0
+                ? `Se registrarán ${report.sampleSizeRequired} piezas evaluadas conservando los defectos encontrados sin borrarlos.`
+                : isInspectionCompleted
+                ? `La muestra de ${report.sampleSizeRequired} piezas está registrada y lista para avanzar a las fotos.`
+                : `Si revisaste los ${report.defectItems.length} criterios físicos y ninguno presentó falla, confirma aquí la muestra limpia.`}
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-2 w-full sm:w-auto shrink-0">
+            {report.totalDefectives > 0 ? (
+              <button
+                type="button"
+                onClick={handleConfirmInspection}
+                className="w-full sm:w-auto py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition active:scale-95 shadow-sm cursor-pointer flex items-center justify-center space-x-2"
+              >
+                <Check className="w-4 h-4" />
+                <span>
+                  Confirmar Muestra con {report.totalDefectives}{' '}
+                  {report.totalDefectives === 1 ? 'Falla' : 'Fallas'}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConfirmInspection}
+                className="w-full sm:w-auto py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition active:scale-95 shadow-sm cursor-pointer flex items-center justify-center space-x-2"
+              >
+                <Check className="w-4 h-4" />
+                <span>✓ Confirmar Muestra de {report.sampleSizeRequired} pzas (0 Defectos)</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Opción de auxilio para resetear todo a 0 si la supervisora cometió un error */}
+        {report.totalDefectives > 0 && (
+          <div className="mt-2.5 pt-2 border-t border-amber-200/70 flex justify-end">
+            <button
+              type="button"
+              onClick={handleResetAllToZero}
+              className="text-[10px] font-bold text-neutral-600 hover:text-neutral-900 underline"
+            >
+              ¿Registraste una falla por error? Limpiar defectos y marcar todo conforme
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 5. RESUMEN DE TOTALES Y BOTÓN PARA PASAR AL PASO 3 CON CANDADO POKA-YOKE */}

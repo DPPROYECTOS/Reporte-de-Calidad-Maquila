@@ -25,6 +25,19 @@ export interface SheetTemplateConfig {
   section6Title: string;
   section7Title: string;
 
+  // Alignments (tipo Word)
+  alignReportTitle: 'left' | 'center' | 'right';
+  alignHeaderSubtitle: 'left' | 'center' | 'right';
+  alignProcedureRef: 'left' | 'center' | 'right';
+  alignSectionTitles: 'left' | 'center' | 'right';
+  alignTableHeaders: 'left' | 'center' | 'right';
+
+  // Spacing, Padding & Anti-Clipping (Word-like Layout Engine)
+  cellPaddingVertical: number; // e.g. 6 (range 3 - 14)
+  cellPaddingHorizontal: number; // e.g. 8 (range 4 - 16)
+  lineHeightMultiplier: number; // e.g. 1.40 (range 1.15 - 1.80)
+  tableBorderWidth: number; // e.g. 2 (range 1 - 4)
+
   // Typography / Font Families
   fontFamilyGeneral: 'sans' | 'serif' | 'mono' | 'arial' | 'georgia' | 'trebuchet';
   fontFamilyTitles: 'serif' | 'sans' | 'mono' | 'georgia' | 'arial';
@@ -93,9 +106,22 @@ export const DEFAULT_TEMPLATE_CONFIG: SheetTemplateConfig = {
   section6Title: 'VI. Dictamen Final y Disposición del Lote',
   section7Title: 'VII. Firmas de Conformidad y Aprobación',
 
+  // Alignments (tipo Word)
+  alignReportTitle: 'center',
+  alignHeaderSubtitle: 'center',
+  alignProcedureRef: 'center',
+  alignSectionTitles: 'left',
+  alignTableHeaders: 'center',
+
+  // Spacing & Anti-Clipping Defaults
+  cellPaddingVertical: 6,
+  cellPaddingHorizontal: 8,
+  lineHeightMultiplier: 1.4,
+  tableBorderWidth: 2,
+
   // Typography
   fontFamilyGeneral: 'sans',
-  fontFamilyTitles: 'serif',
+  fontFamilyTitles: 'sans',
 
   // Font Sizes (px)
   fontSizeReportTitle: 18,
@@ -121,14 +147,14 @@ export const DEFAULT_TEMPLATE_CONFIG: SheetTemplateConfig = {
   tableSubHeaderTextColor: '#374151',
 
   // Backgrounds & Borders
-  sectionHeaderBgColor: '#1A1A1A',
+  sectionHeaderBgColor: '#1D4ED8',
   cellLabelBgColor: '#F3F4F6',
-  tableBorderColor: '#1A1A1A',
+  tableBorderColor: '#1E3A8A',
   tableSubHeaderBgColor: '#F3F4F6',
   metadataBgColor: '#FAF9F6',
 
   // Fallbacks
-  headerBgColor: '#1A1A1A',
+  headerBgColor: '#1D4ED8',
   headerTextColor: '#FFFFFF',
   cellHeaderBgColor: '#F3F4F6',
   cellHeaderTextColor: '#1F2937',

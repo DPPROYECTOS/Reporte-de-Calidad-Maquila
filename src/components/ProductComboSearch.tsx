@@ -33,7 +33,6 @@ export const ProductComboSearch: React.FC<ProductComboSearchProps> = ({
 }) => {
   const [query, setQuery] = useState<string>(selectedSku || '');
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [isEditingDesc, setIsEditingDesc] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -329,14 +328,6 @@ export const ProductComboSearch: React.FC<ProductComboSearchProps> = ({
                 </span>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setIsEditingDesc(!isEditingDesc)}
-              className="text-[10px] font-bold text-neutral-600 hover:text-neutral-900 underline"
-            >
-              {isEditingDesc ? 'Cerrar edición' : 'Editar descripción'}
-            </button>
           </div>
 
           {/* DESCRIPCIÓN DE LA CLAVE */}
@@ -344,26 +335,9 @@ export const ProductComboSearch: React.FC<ProductComboSearchProps> = ({
             <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">
               Descripción de la clave:
             </div>
-
-            {isEditingDesc ? (
-              <textarea
-                rows={2}
-                value={selectedDescription}
-                onChange={(e) => {
-                  if (onUpdateDescription) {
-                    onUpdateDescription(e.target.value);
-                  } else {
-                    onSelectProduct(selectedSku, e.target.value, currentComponents);
-                  }
-                }}
-                placeholder="Escribe la descripción del combo..."
-                className="w-full text-xs font-semibold text-neutral-900 p-2 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-hidden focus:border-amber-500"
-              />
-            ) : (
-              <p className="text-xs sm:text-sm font-bold text-neutral-900 leading-snug">
-                {selectedDescription || 'Sin descripción asignada'}
-              </p>
-            )}
+            <p className="text-xs sm:text-sm font-bold text-neutral-900 leading-snug">
+              {selectedDescription || 'Sin descripción asignada'}
+            </p>
           </div>
 
           {/* COMPONENTES DEL ARMADO:

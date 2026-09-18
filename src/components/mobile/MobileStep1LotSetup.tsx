@@ -53,6 +53,29 @@ function addMinutesToTime(time24: string, minsToAdd: number): string {
   return `${newH}:${newM}`;
 }
 
+function computeDuration(start?: string, end?: string): { minutes: number; text: string; isValid: boolean } {
+  if (!start || !end) return { minutes: 0, text: '--', isValid: true };
+  const [h1, m1] = start.split(':').map(Number);
+  const [h2, m2] = end.split(':').map(Number);
+  if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return { minutes: 0, text: '--', isValid: true };
+
+  let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (diff < 0) {
+    return { minutes: diff, text: 'Hora de término anterior al inicio', isValid: false };
+  }
+  const hours = Math.floor(diff / 60);
+  const mins = diff % 60;
+  let text = '';
+  if (hours > 0 && mins > 0) {
+    text = `${hours} h ${mins} min`;
+  } else if (hours > 0) {
+    text = `${hours} h (${hours * 60} min)`;
+  } else {
+    text = `${mins} min`;
+  }
+  return { minutes: diff, text, isValid: true };
+}
+
 interface MobileStep1LotSetupProps {
   report: QualityReport;
   onUpdateReport: (updated: QualityReport) => void;
@@ -94,6 +117,31 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
   const [showCustomInspectorInput, setShowCustomInspectorInput] = useState<boolean>(() => {
     return Boolean(report.inspectorName && !inspectorsList.includes(report.inspectorName));
   });
+
+  // Cálculo de duración y validación
+  const durationInfo = computeDuration(report.startTime || '09:00', report.endTime || '12:00');
+
+  const handleUpdateStartTime = (newStart: string) => {
+    const currentEnd = report.endTime || '12:00';
+    const dur = computeDuration(newStart, currentEnd);
+    onUpdateReport({
+      ...report,
+      startTime: newStart,
+      durationMinutes: dur.isValid && dur.minutes > 0 ? dur.minutes : (report.durationMinutes || 60),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleUpdateEndTime = (newEnd: string) => {
+    const currentStart = report.startTime || '09:00';
+    const dur = computeDuration(currentStart, newEnd);
+    onUpdateReport({
+      ...report,
+      endTime: newEnd,
+      durationMinutes: dur.isValid && dur.minutes > 0 ? dur.minutes : (report.durationMinutes || 60),
+      updatedAt: new Date().toISOString(),
+    });
+  };
 
   // Update total lot size and auto-recalculate AQL sampling behind the scenes
   const handleLotSizeChange = (newSize: number) => {
@@ -274,115 +322,170 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
           </div>
 
           {/* Horario de Inspección (Hora Inicio y Hora Término - Formato Oficial de Hoja) */}
-          <div className="pt-2 border-t border-neutral-200 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-[11px] font-bold text-neutral-700 uppercase">
-                Horario de Inspección Oficial:
-              </label>
-              <div className="flex items-center space-x-1 text-[10px] font-mono text-neutral-600">
-                <Calendar className="w-3 h-3 text-neutral-500" />
+          <div className="pt-3 border-t border-neutral-200 space-y-3">
+            {/* Encabezado del Horario con Selector de Fecha */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center space-x-2">
+                <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+                  <Clock className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-neutral-800 tracking-wide uppercase">
+                    Horario de Inspección Oficial
+                  </label>
+                  <span className="text-[10px] text-neutral-500 block">
+                    Control de tiempos de inicio y fin de la inspección
+                  </span>
+                </div>
+              </div>
+
+              {/* Selector de Fecha Estilizado */}
+              <div className="inline-flex items-center space-x-1.5 bg-neutral-50 border border-neutral-300 rounded-lg px-2.5 py-1 text-xs self-start sm:self-auto shadow-2xs">
+                <Calendar className="w-3.5 h-3.5 text-neutral-600 shrink-0" />
+                <span className="text-[10px] font-bold text-neutral-600 uppercase">Fecha:</span>
                 <input
                   type="date"
                   value={report.inspectionDate || new Date().toISOString().split('T')[0]}
                   onChange={(e) => onUpdateReport({ ...report, inspectionDate: e.target.value })}
-                  className="bg-transparent font-bold text-neutral-800 p-0 focus:outline-none cursor-pointer"
+                  className="bg-transparent font-mono font-bold text-neutral-800 text-xs focus:outline-none cursor-pointer"
                 />
               </div>
             </div>
 
-            {/* Recuadro Oficial de Horas (Idéntico al formato oficial Hoja Maquila) */}
-            <div className="border-2 border-neutral-300 rounded-xl overflow-hidden bg-white shadow-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x-2 divide-neutral-300">
-                {/* HORA INICIO */}
-                <div className="p-2.5 flex items-center justify-between bg-neutral-50/70">
+            {/* Tarjetas de Horas (Grid Responsivo Sin Superposiciones) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* TARJETA 1: HORA INICIO */}
+              <div className="border-2 border-neutral-200 rounded-xl p-3 bg-white hover:border-blue-200 transition space-y-2">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-1.5">
-                    <Clock className="w-3.5 h-3.5 text-neutral-600" />
-                    <span className="font-black text-[11px] text-neutral-800 tracking-wider uppercase">
-                      HORA INICIO:
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                    <span className="font-bold text-xs text-neutral-800 uppercase tracking-wider">
+                      Hora Inicio
                     </span>
                   </div>
-                  <div className="flex items-center space-x-1.5">
-                    <input
-                      type="time"
-                      value={report.startTime || '09:00'}
-                      onChange={(e) => onUpdateReport({ ...report, startTime: e.target.value })}
-                      className="font-mono text-xs font-bold bg-white border border-neutral-300 rounded-lg px-2 py-1 text-neutral-900 focus:outline-neutral-900 shadow-xs cursor-pointer"
-                    />
-                    <span className="text-[10px] font-bold font-mono text-neutral-600 min-w-[70px] text-right">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateStartTime(getCurrentTime24())}
+                    className="inline-flex items-center space-x-1 text-[11px] font-bold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 active:scale-95 px-2 py-1 rounded-md border border-neutral-300 shadow-2xs transition cursor-pointer"
+                    title="Asignar hora actual como hora de inicio"
+                  >
+                    <span>⏱️ Hora Actual</span>
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  <input
+                    type="time"
+                    value={report.startTime || '09:00'}
+                    onChange={(e) => handleUpdateStartTime(e.target.value)}
+                    className="w-full font-mono text-sm font-bold bg-neutral-50 hover:bg-white focus:bg-white border-2 border-neutral-200 focus:border-blue-500 rounded-lg px-3 py-2 text-neutral-900 focus:outline-none transition shadow-2xs"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-neutral-500 px-0.5">
+                    <span>Formato 12 hrs:</span>
+                    <span className="font-mono font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded">
                       {formatTime12(report.startTime || '09:00')}
                     </span>
                   </div>
                 </div>
+              </div>
 
-                {/* HORA TÉRMINO */}
-                <div className="p-2.5 flex items-center justify-between bg-neutral-50/70">
+              {/* TARJETA 2: HORA TÉRMINO */}
+              <div className="border-2 border-neutral-200 rounded-xl p-3 bg-white hover:border-blue-200 transition space-y-2">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-1.5">
-                    <Clock className="w-3.5 h-3.5 text-neutral-600" />
-                    <span className="font-black text-[11px] text-neutral-800 tracking-wider uppercase">
-                      HORA TÉRMINO:
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+                    <span className="font-bold text-xs text-neutral-800 uppercase tracking-wider">
+                      Hora Término
                     </span>
                   </div>
-                  <div className="flex items-center space-x-1.5">
-                    <input
-                      type="time"
-                      value={report.endTime || '12:00'}
-                      onChange={(e) => onUpdateReport({ ...report, endTime: e.target.value })}
-                      className="font-mono text-xs font-bold bg-white border border-neutral-300 rounded-lg px-2 py-1 text-neutral-900 focus:outline-neutral-900 shadow-xs cursor-pointer"
-                    />
-                    <span className="text-[10px] font-bold font-mono text-neutral-600 min-w-[70px] text-right">
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUpdateEndTime(
+                          addMinutesToTime(report.startTime || getCurrentTime24(), 60)
+                        )
+                      }
+                      className="text-[10px] font-bold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 active:scale-95 px-1.5 py-1 rounded border border-neutral-300 shadow-2xs transition"
+                      title="Sumar 1 hora a la hora de inicio"
+                    >
+                      +1h
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUpdateEndTime(
+                          addMinutesToTime(report.startTime || getCurrentTime24(), 120)
+                        )
+                      }
+                      className="text-[10px] font-bold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 active:scale-95 px-1.5 py-1 rounded border border-neutral-300 shadow-2xs transition"
+                      title="Sumar 2 horas a la hora de inicio"
+                    >
+                      +2h
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateEndTime(getCurrentTime24())}
+                      className="text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 active:scale-95 px-1.5 py-1 rounded border border-blue-200 shadow-2xs transition"
+                      title="Asignar hora actual de término"
+                    >
+                      Ahora
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <input
+                    type="time"
+                    value={report.endTime || '12:00'}
+                    onChange={(e) => handleUpdateEndTime(e.target.value)}
+                    className="w-full font-mono text-sm font-bold bg-neutral-50 hover:bg-white focus:bg-white border-2 border-neutral-200 focus:border-blue-500 rounded-lg px-3 py-2 text-neutral-900 focus:outline-none transition shadow-2xs"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-neutral-500 px-0.5">
+                    <span>Formato 12 hrs:</span>
+                    <span className="font-mono font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded">
                       {formatTime12(report.endTime || '12:00')}
                     </span>
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Atajos Rápidos de 1 toque */}
-              <div className="bg-neutral-100/90 px-2.5 py-1.5 border-t border-neutral-200 flex items-center justify-between flex-wrap gap-1 text-[10px]">
-                <div className="flex items-center space-x-1">
-                  <span className="text-neutral-500 font-bold uppercase text-[9px]">Inicio:</span>
-                  <button
-                    type="button"
-                    onClick={() => onUpdateReport({ ...report, startTime: getCurrentTime24() })}
-                    className="px-2 py-0.5 bg-white hover:bg-neutral-200 active:scale-95 rounded font-bold text-neutral-800 border border-neutral-300 shadow-2xs transition"
-                  >
-                    Hora Actual ⏱️
-                  </button>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="text-neutral-500 font-bold uppercase text-[9px]">Término:</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onUpdateReport({
-                        ...report,
-                        endTime: addMinutesToTime(report.startTime || getCurrentTime24(), 60),
-                      })
-                    }
-                    className="px-2 py-0.5 bg-white hover:bg-neutral-200 active:scale-95 rounded font-bold text-neutral-800 border border-neutral-300 shadow-2xs transition"
-                  >
-                    +1h
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onUpdateReport({
-                        ...report,
-                        endTime: addMinutesToTime(report.startTime || getCurrentTime24(), 120),
-                      })
-                    }
-                    className="px-2 py-0.5 bg-white hover:bg-neutral-200 active:scale-95 rounded font-bold text-neutral-800 border border-neutral-300 shadow-2xs transition"
-                  >
-                    +2h
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onUpdateReport({ ...report, endTime: getCurrentTime24() })}
-                    className="px-2 py-0.5 bg-white hover:bg-neutral-200 active:scale-95 rounded font-bold text-neutral-800 border border-neutral-300 shadow-2xs transition"
-                  >
-                    Ahora
-                  </button>
-                </div>
+            {/* Barra Informativa de Duración Total Calculada */}
+            <div
+              className={`p-2.5 rounded-xl border flex items-center justify-between flex-wrap gap-2 text-xs transition ${
+                durationInfo.isValid && durationInfo.minutes > 0
+                  ? 'bg-blue-50/70 border-blue-200 text-blue-900'
+                  : !durationInfo.isValid
+                  ? 'bg-amber-50 border-amber-300 text-amber-900'
+                  : 'bg-neutral-50 border-neutral-200 text-neutral-700'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                <span className="font-medium">
+                  {durationInfo.isValid ? (
+                    <>
+                      Duración calculada:{' '}
+                      <strong className="font-black text-neutral-900">
+                        {durationInfo.text}
+                      </strong>
+                      {durationInfo.minutes > 0 && (
+                        <span className="text-neutral-500 ml-1">
+                          ({durationInfo.minutes} min netos)
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="font-bold text-amber-800">
+                      ⚠️ Atención: La hora de término debe ser posterior a la de inicio
+                    </span>
+                  )}
+                </span>
               </div>
+              <span className="text-[10px] font-mono text-neutral-500 ml-auto">
+                Sincronizado en Supabase
+              </span>
             </div>
           </div>
         </div>

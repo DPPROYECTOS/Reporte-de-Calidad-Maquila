@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SheetTemplateConfig, DEFAULT_TEMPLATE_CONFIG } from '../types/templateConfig';
+import { QualityReport } from '../types/qualityReport';
 import {
   X,
   Sliders,
@@ -13,22 +14,32 @@ import {
   Upload,
   Eye,
   Trash2,
-  SlidersHorizontal,
   Paintbrush,
-  ListOrdered,
   Database,
   Cloud,
-  CloudCheck,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Sparkles,
+  Layers,
+  ArrowUpDown,
+  MoveVertical,
+  Download,
 } from 'lucide-react';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import {
   saveTemplateConfigToSupabase,
   syncTemplateConfigFromSupabase,
   saveStoredTemplateConfig,
-  resetStoredTemplateConfig,
   fetchPresetsFromSupabase,
   TemplatePresetRecord,
 } from '../utils/templateConfigStore';
+import { FONT_OPTIONS, getTitleFontCss, getGeneralFontCss } from '../utils/templateFontUtils';
+import { downloadOfficialSheetPdf } from '../utils/officialSheetPdfExport';
+import { SAMPLE_REPORTS } from '../data/sampleReports';
 
 interface TemplateConfigModalProps {
   isOpen: boolean;
@@ -36,6 +47,7 @@ interface TemplateConfigModalProps {
   config: SheetTemplateConfig;
   onSaveConfig: (newConfig: SheetTemplateConfig) => void;
   onOpenCatalogUpload?: () => void;
+  currentReport?: QualityReport;
 }
 
 const COLOR_PRESETS = [
@@ -107,60 +119,23 @@ const COLOR_PRESETS = [
   },
 ];
 
-const FONT_OPTIONS: { id: SheetTemplateConfig['fontFamilyGeneral']; name: string; sample: string; css: string }[] = [
-  {
-    id: 'sans',
-    name: 'Sans-Serif Moderna (Inter / Roboto / Sistema)',
-    sample: 'Control de Calidad 123',
-    css: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  },
-  {
-    id: 'serif',
-    name: 'Serif Formal y Ejecutiva (Georgia / Times New Roman)',
-    sample: 'Control de Calidad 123',
-    css: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-  },
-  {
-    id: 'mono',
-    name: 'Monospace Técnica y Precisa (Courier / Consolas)',
-    sample: 'Control de Calidad 123',
-    css: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-  },
-  {
-    id: 'arial',
-    name: 'Arial Clásica Limpia',
-    sample: 'Control de Calidad 123',
-    css: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
-  },
-  {
-    id: 'georgia',
-    name: 'Georgia Editorial',
-    sample: 'Control de Calidad 123',
-    css: 'Georgia, Cambria, "Times New Roman", serif',
-  },
-  {
-    id: 'trebuchet',
-    name: 'Trebuchet MS Geométrica',
-    sample: 'Control de Calidad 123',
-    css: '"Trebuchet MS", "Lucida Sans Unicode", Arial, sans-serif',
-  },
-];
-
 export const TemplateConfigModal: React.FC<TemplateConfigModalProps> = ({
   isOpen,
   onClose,
   config,
   onSaveConfig,
   onOpenCatalogUpload,
+  currentReport,
 }) => {
-  const [activeTab, setActiveTab] = useState<'logo' | 'typography' | 'sizes' | 'textColors' | 'boxColors' | 'titles' | 'sections'>('logo');
+  const [activeTab, setActiveTab] = useState<'alignment' | 'colors' | 'spacing' | 'typography' | 'texts' | 'presets'>('alignment');
   const [form, setForm] = useState<SheetTemplateConfig>(() => ({ ...DEFAULT_TEMPLATE_CONFIG, ...config }));
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<'synced' | 'local' | 'saving'>('synced');
   const [customPresets, setCustomPresets] = useState<TemplatePresetRecord[]>([]);
+  const [zoom, setZoom] = useState<number>(0.85);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
-  // Modal de confirmación para eliminar o restablecer
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -175,13 +150,11 @@ export const TemplateConfigModal: React.FC<TemplateConfigModalProps> = ({
     onConfirm: () => {},
   });
 
-  // Sync state and fetch from Supabase when modal opens
   useEffect(() => {
     if (isOpen) {
       setForm({ ...DEFAULT_TEMPLATE_CONFIG, ...config });
       setSavedSuccess(false);
 
-      // Cargar configuración y presets desde Supabase en segundo plano
       syncTemplateConfigFromSupabase().then((res) => {
         if (res.fromCloud && res.data) {
           setForm(res.data);
@@ -255,7 +228,7 @@ export const TemplateConfigModal: React.FC<TemplateConfigModalProps> = ({
       title: '¿Restablecer formato a valores oficiales?',
       itemType: 'Configuración Oficial',
       itemName: 'Formato CVD-CCA-F-08',
-      message: '¿Estás seguro de restablecer todos los textos, colores, tamaños, tipografías y logo a los valores originales de fábrica? También se sincronizará con la base de datos de Supabase.',
+      message: '¿Estás seguro de restablecer todos los alineados, colores, tamaños, espaciados y textos a los valores predeterminados? También se actualizará en Supabase.',
       confirmText: 'Sí, restablecer valores',
       onConfirm: async () => {
         setForm(DEFAULT_TEMPLATE_CONFIG);
@@ -265,17 +238,15 @@ export const TemplateConfigModal: React.FC<TemplateConfigModalProps> = ({
         await saveTemplateConfigToSupabase(DEFAULT_TEMPLATE_CONFIG);
         setCloudStatus('synced');
         setSavedSuccess(true);
-        setTimeout(() => setSavedSuccess(false), 2500);
+        setTimeout(() => setSavedSuccess(false), 2000);
       },
     });
   };
 
   const handleSave = async () => {
-    // 1. Guardar localmente
     onSaveConfig(form);
     saveStoredTemplateConfig(form);
 
-    // 2. Guardar en Supabase en la tabla official_template_config
     setCloudStatus('saving');
     try {
       const res = await saveTemplateConfigToSupabase(form);
@@ -293,1450 +264,1795 @@ export const TemplateConfigModal: React.FC<TemplateConfigModalProps> = ({
     setTimeout(() => {
       setSavedSuccess(false);
       onClose();
-    }, 900);
+    }, 700);
   };
 
-  // Helper font family css
-  const activeGeneralFontCss = FONT_OPTIONS.find((f) => f.id === form.fontFamilyGeneral)?.css || 'sans-serif';
-  const activeTitleFontCss = FONT_OPTIONS.find((f) => f.id === form.fontFamilyTitles)?.css || 'serif';
+  const handleDownloadTestPdf = async () => {
+    setIsExportingPdf(true);
+    try {
+      const rep = currentReport || SAMPLE_REPORTS[0];
+      await downloadOfficialSheetPdf(
+        rep,
+        form,
+        `PRUEBA_CARTA_${form.documentCode || 'CVD-CCA-F-08'}.pdf`,
+        'official-template-preview-sheet'
+      );
+    } catch (err) {
+      console.error('Error al generar PDF de prueba:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  const activeGeneralFontCss = getGeneralFontCss(form.fontFamilyGeneral);
+  const activeTitleFontCss = getTitleFontCss(form.fontFamilyTitles);
+
+  // Format spacing & dimensions
+  const padV = form.cellPaddingVertical !== undefined ? form.cellPaddingVertical : 5;
+  const padH = form.cellPaddingHorizontal !== undefined ? form.cellPaddingHorizontal : 7;
+  const lineH = form.lineHeightMultiplier !== undefined ? form.lineHeightMultiplier : 1.35;
+  const bWidth = form.tableBorderWidth !== undefined ? form.tableBorderWidth : 1.5;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto font-sans">
-      <div className="bg-white rounded-2xl shadow-2xl border-2 border-slate-700 w-full max-w-4xl overflow-hidden my-auto flex flex-col max-h-[95vh]">
-        {/* Header del Modal */}
-        <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between border-b border-slate-800 shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-3 bg-slate-950/90 backdrop-blur-md overflow-hidden font-sans">
+      <div className="bg-slate-900 rounded-2xl shadow-2xl border border-slate-700 w-full h-[98vh] max-w-[1700px] overflow-hidden flex flex-col">
+        {/* ================= BARRA SUPERIOR EJECUTIVA ESTILO WORD ================= */}
+        <div className="bg-slate-950 text-white px-4 py-2.5 flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="bg-emerald-500 text-slate-950 p-2 rounded-xl font-black shadow-md">
+            <div className="bg-emerald-500 text-slate-950 p-2 rounded-xl font-black shadow-md flex items-center justify-center">
               <Sliders className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="font-black text-sm sm:text-base tracking-wide uppercase">
-                  Editor del Formato Oficial
+                <h2 className="font-black text-sm sm:text-base tracking-wide text-white uppercase flex items-center space-x-2">
+                  <span>Diseñador del Formato Oficial</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                    Carta 8.5" x 11" (Word Style)
+                  </span>
                 </h2>
-                <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                  Personalización Completa
-                </span>
                 {cloudStatus === 'synced' && (
-                  <span className="hidden md:inline-flex items-center space-x-1 bg-emerald-950/80 text-emerald-300 border border-emerald-600/50 text-[9px] px-2 py-0.5 rounded-full font-bold">
+                  <span className="hidden lg:inline-flex items-center space-x-1 bg-emerald-950/80 text-emerald-300 border border-emerald-600/50 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
                     <Cloud className="w-3 h-3 text-emerald-400" />
-                    <span>Supabase DB Conectado</span>
+                    <span>Supabase DB Sincronizado</span>
                   </span>
                 )}
                 {cloudStatus === 'saving' && (
-                  <span className="hidden md:inline-flex items-center space-x-1 bg-amber-950/80 text-amber-300 border border-amber-600/50 text-[9px] px-2 py-0.5 rounded-full font-bold animate-pulse">
+                  <span className="hidden lg:inline-flex items-center space-x-1 bg-amber-950/80 text-amber-300 border border-amber-600/50 text-[10px] px-2.5 py-0.5 rounded-full font-bold animate-pulse">
                     <Cloud className="w-3 h-3 text-amber-400" />
                     <span>Guardando en Supabase...</span>
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-300">
-                Ajusta logo en imagen, tamaño de cada texto, colores individuales de letra, tipografía y recuadros.
+              <p className="text-[11px] text-slate-400">
+                Centra títulos, elige color para cada letra, elimina textos cortados con padding dinámico y visualiza en la hoja en vivo.
               </p>
             </div>
           </div>
-            <div className="flex items-center space-x-2">
-              {onOpenCatalogUpload && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenCatalogUpload();
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow flex items-center space-x-1.5 transition active:scale-95 cursor-pointer"
-                  title="Abrir la ventana de carga de claves de armados y componentes (Excel / CSV)"
-                >
-                  <Database className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Catálogo Armados (Excel/CSV)</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition cursor-pointer"
-                title="Cerrar"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-        </div>
-
-        {/* VISTA PREVIA EN VIVO */}
-        <div className="bg-slate-100 p-3 border-b border-slate-200 shrink-0">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-black uppercase text-slate-700 flex items-center space-x-1.5">
-              <Eye className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Vista Previa en Tiempo Real:</span>
-            </span>
-            <span className="text-[10px] text-slate-500 font-mono font-bold">
-              Tipografía: {form.fontFamilyGeneral} | Títulos: {form.fontFamilyTitles}
-            </span>
-          </div>
-
-          <div
-            className="bg-white rounded-lg p-2.5 shadow-sm transition-all"
-            style={{
-              border: `2px solid ${form.tableBorderColor}`,
-              fontFamily: activeGeneralFontCss,
-            }}
-          >
-            <div
-              className="grid grid-cols-12 divide-x text-center items-center"
-              style={{ borderColor: form.tableBorderColor }}
-            >
-              {/* Logo Preview */}
-              <div className="col-span-3 p-2 flex flex-col items-center justify-center min-h-[55px] bg-white">
-                {form.logoImageUrl ? (
-                  <img
-                    src={form.logoImageUrl}
-                    alt="Logo Empresa"
-                    style={{ maxHeight: `${Math.min(form.logoHeight || 48, 55)}px` }}
-                    className="max-w-full object-contain"
-                  />
-                ) : (
-                  <div className="text-[10px] font-mono font-bold text-slate-400 border border-dashed border-slate-300 rounded p-1.5 w-full text-center">
-                    [Sin Logo Subido]
-                  </div>
-                )}
-                {form.logoSubtitle && (
-                  <span
-                    className="text-[8px] font-bold uppercase tracking-wider mt-1"
-                    style={{ color: form.subtitleTextColor }}
-                  >
-                    {form.logoSubtitle}
-                  </span>
-                )}
-              </div>
-
-              {/* Title Preview */}
-              <div
-                className="col-span-6 p-2 flex flex-col justify-center text-center"
-                style={{ backgroundColor: form.metadataBgColor }}
-              >
-                <span
-                  className="font-bold uppercase tracking-widest truncate"
-                  style={{
-                    fontSize: `${form.fontSizeHeaderSubtitle}px`,
-                    color: form.subtitleTextColor,
-                  }}
-                >
-                  {form.headerSubtitle}
-                </span>
-                <h4
-                  className="font-black uppercase tracking-tight truncate leading-tight my-0.5"
-                  style={{
-                    fontSize: `${form.fontSizeReportTitle}px`,
-                    color: form.titleTextColor,
-                    fontFamily: activeTitleFontCss,
-                  }}
-                >
-                  {form.reportTitle}
-                </h4>
-                <span
-                  className="italic truncate"
-                  style={{
-                    fontSize: `${form.fontSizeProcedureRef}px`,
-                    color: form.procedureRefTextColor,
-                  }}
-                >
-                  {form.procedureReference}
-                </span>
-              </div>
-
-              {/* Metadata Preview */}
-              <div
-                className="col-span-3 font-mono p-1.5 flex flex-col justify-center text-left"
-                style={{
-                  backgroundColor: form.metadataBgColor,
-                  fontSize: `${form.fontSizeMetadataLabels}px`,
-                }}
-              >
-                <div>
-                  <strong style={{ color: form.metadataLabelTextColor }}>CÓDIGO: </strong>
-                  <span style={{ color: form.metadataValueTextColor, fontSize: `${form.fontSizeMetadataValues}px` }}>
-                    {form.documentCode}
-                  </span>
-                </div>
-                <div>
-                  <strong style={{ color: form.metadataLabelTextColor }}>VERSIÓN: </strong>
-                  <span style={{ color: form.metadataValueTextColor, fontSize: `${form.fontSizeMetadataValues}px` }}>
-                    {form.version}
-                  </span>
-                </div>
-                <div>
-                  <strong style={{ color: form.metadataLabelTextColor }}>REVISIÓN: </strong>
-                  <span style={{ color: form.metadataValueTextColor, fontSize: `${form.fontSizeMetadataValues}px` }}>
-                    {form.revisionDate}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Barra de Sección Preview */}
-            <div
-              className="mt-2 font-bold px-3 py-1 uppercase tracking-wider flex items-center justify-between rounded"
-              style={{
-                backgroundColor: form.sectionHeaderBgColor || form.headerBgColor,
-                color: form.sectionHeaderTextColor || form.headerTextColor,
-                fontSize: `${form.fontSizeSectionTitles}px`,
-                fontFamily: activeTitleFontCss,
-              }}
-            >
-              <span>{form.section1Title}</span>
-              <span className="opacity-80 text-[8px] font-mono">{form.documentCode}</span>
-            </div>
-
-            {/* Muestra de Celda Preview */}
-            <div
-              className="mt-1.5 grid grid-cols-4 border text-left divide-x"
-              style={{ borderColor: form.tableBorderColor }}
-            >
-              <div
-                className="p-1 font-bold uppercase"
-                style={{
-                  backgroundColor: form.cellLabelBgColor,
-                  color: form.cellLabelTextColor,
-                  fontSize: `${form.fontSizeCellLabels}px`,
-                }}
-              >
-                Inspector:
-              </div>
-              <div
-                className="p-1 font-semibold"
-                style={{
-                  color: form.cellValueTextColor,
-                  fontSize: `${form.fontSizeCellValues}px`,
-                }}
-              >
-                Lic. Laura Martínez
-              </div>
-              <div
-                className="p-1 font-bold uppercase"
-                style={{
-                  backgroundColor: form.cellLabelBgColor,
-                  color: form.cellLabelTextColor,
-                  fontSize: `${form.fontSizeCellLabels}px`,
-                }}
-              >
-                Fecha Inspección:
-              </div>
-              <div
-                className="p-1 font-mono"
-                style={{
-                  color: form.cellValueTextColor,
-                  fontSize: `${form.fontSizeCellValues}px`,
-                }}
-              >
-                08/09/2026
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Barra de Pestañas de Edición */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-2 sm:px-4 shrink-0 overflow-x-auto text-xs font-bold gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('logo')}
-            className={`py-2.5 px-3 border-b-2 transition flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'logo'
-                ? 'border-indigo-600 text-indigo-800 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4 text-indigo-600" />
-            <span>1. Subir Logo / Imagen</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('typography')}
-            className={`py-2.5 px-3 border-b-2 transition flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'typography'
-                ? 'border-indigo-600 text-indigo-800 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Type className="w-4 h-4 text-indigo-600" />
-            <span>2. Tipo de Letra</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('sizes')}
-            className={`py-2.5 px-3 border-b-2 transition flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'sizes'
-                ? 'border-indigo-600 text-indigo-800 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
-            <span>3. Tamaño de Cada Texto</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('textColors')}
-            className={`py-2.5 px-3 border-b-2 transition flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'textColors'
-                ? 'border-indigo-600 text-indigo-800 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Paintbrush className="w-4 h-4 text-indigo-600" />
-            <span>4. Color de Cada Letra</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('boxColors')}
-            className={`py-2.5 px-3 border-b-2 transition flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'boxColors'
-                ? 'border-indigo-600 text-indigo-800 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Palette className="w-4 h-4 text-indigo-600" />
-            <span>5. Colores de Recuadros</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('titles')}
-            className={`py-2.5 px-3 border-b-2 transition flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'titles'
-                ? 'border-indigo-600 text-indigo-800 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FileText className="w-4 h-4 text-indigo-600" />
-            <span>6. Títulos de Hoja</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('sections')}
-            className={`py-2.5 px-3 border-b-2 transition flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'sections'
-                ? 'border-indigo-600 text-indigo-800 bg-white shadow-xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ListOrdered className="w-4 h-4 text-indigo-600" />
-            <span>7. Títulos Secciones (I-VII)</span>
-          </button>
-        </div>
-
-        {/* Contenido de las Pestañas (Scrollable) */}
-        <div className="p-5 overflow-y-auto space-y-4 text-xs flex-1">
-          {/* ========================================================
-              TAB 1: SUBIR LOGO E IMAGEN (ELIMINADO LOGO POR DEFECTO)
-             ======================================================== */}
-          {activeTab === 'logo' && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-indigo-950">
-                <div className="flex items-center space-x-2 font-bold mb-1">
-                  <Upload className="w-4 h-4 text-indigo-600" />
-                  <span>Logotipo Institucional de la Hoja Oficial</span>
-                </div>
-                <p className="text-[11px] text-indigo-800 leading-relaxed">
-                  Se ha retirado el logo anterior. Ahora puedes subir la imagen o logotipo oficial de tu empresa en formato PNG, JPG o SVG. Esta imagen aparecerá en el encabezado oficial de la hoja de inspección e informes impresos.
-                </p>
-              </div>
-
-              {/* Zona de Carga Drag & Drop / Input File */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all ${
-                  isDragOver
-                    ? 'border-indigo-600 bg-indigo-50/70 scale-[1.01]'
-                    : form.logoImageUrl
-                    ? 'border-slate-300 bg-slate-50'
-                    : 'border-slate-400 bg-white hover:border-indigo-500'
-                }`}
-              >
-                {form.logoImageUrl ? (
-                  <div className="space-y-3">
-                    <div className="flex justify-center items-center py-2">
-                      <img
-                        src={form.logoImageUrl}
-                        alt="Logo Actual"
-                        style={{ maxHeight: `${form.logoHeight || 48}px` }}
-                        className="max-w-[280px] object-contain shadow-xs border border-slate-200 p-2 bg-white rounded-xl"
-                      />
-                    </div>
-                    <div className="flex items-center justify-center space-x-3">
-                      <label className="cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl shadow-xs inline-flex items-center space-x-1.5 transition">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Cambiar Imagen</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirmModal({
-                            isOpen: true,
-                            title: '¿Estás seguro de quitar el logotipo oficial?',
-                            itemType: 'Logotipo Institucional',
-                            itemName: 'Imagen de cabecera del formato',
-                            message: 'Esta acción removerá la imagen del logotipo en el encabezado oficial de la hoja de trabajo e informes impresos.',
-                            confirmText: 'Sí, quitar logo',
-                            onConfirm: () => handleChange('logoImageUrl', ''),
-                          });
-                        }}
-                        className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 font-bold px-3 py-1.5 rounded-xl border border-red-200 inline-flex items-center space-x-1 transition cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Quitar Logo</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="w-12 h-12 mx-auto rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                      <Upload className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800 text-sm">
-                        Arrastra tu imagen aquí o haz clic para seleccionarla
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Formatos soportados: PNG (con o sin transparencia), JPG, SVG o WebP
-                      </p>
-                    </div>
-                    <label className="cursor-pointer bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl shadow-md inline-flex items-center space-x-2 transition">
-                      <Upload className="w-4 h-4" />
-                      <span>Seleccionar Archivo de mi Equipo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              {/* Ajuste de Altura del Logo */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700 flex items-center space-x-1.5">
-                    <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
-                    <span>Altura de visualización del logo en la hoja:</span>
-                  </label>
-                  <span className="font-mono font-bold bg-white px-2.5 py-1 rounded-lg border text-indigo-700">
-                    {form.logoHeight || 48} px
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={24}
-                  max={90}
-                  step={2}
-                  value={form.logoHeight || 48}
-                  onChange={(e) => handleChange('logoHeight', parseInt(e.target.value) || 48)}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                  <span>Pequeño (24px)</span>
-                  <span>Estándar (48px)</span>
-                  <span>Grande (90px)</span>
-                </div>
-              </div>
-
-              {/* URL directa opcional */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  O ingresar enlace URL directo de la imagen:
-                </label>
-                <input
-                  type="text"
-                  value={form.logoImageUrl || ''}
-                  onChange={(e) => {
-                    handleChange('logoImageUrl', e.target.value);
-                    handleChange('logoType', 'image');
-                  }}
-                  placeholder="https://ejemplo.com/logo-empresa.png"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs focus:border-indigo-600 focus:outline-none"
-                />
-              </div>
-
-              {/* Subtítulo del Logo opcional */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Texto o Subtítulo bajo el Logo (Opcional):
-                </label>
-                <input
-                  type="text"
-                  value={form.logoSubtitle}
-                  onChange={(e) => handleChange('logoSubtitle', e.target.value)}
-                  placeholder="Control de Calidad / Aseguramiento de Calidad"
-                  className="w-full font-bold px-3 py-2 border border-slate-300 rounded-xl focus:border-indigo-600 focus:outline-none"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Puedes dejarlo en blanco si tu imagen de logotipo ya incluye el nombre o departamento.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 2: TIPO DE LETRA (TIPOGRAFÍA)
-             ======================================================== */}
-          {activeTab === 'typography' && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-indigo-950">
-                <p className="font-bold text-[11px] mb-0.5 flex items-center space-x-1.5">
-                  <Type className="w-4 h-4 text-indigo-600" />
-                  <span>Familias Tipográficas del Documento:</span>
-                </p>
-                <p className="text-[11px] text-indigo-800">
-                  Selecciona la tipografía principal del documento y la tipografía para los títulos de sección y encabezados.
-                </p>
-              </div>
-
-              {/* Tipografía General */}
-              <div className="space-y-2">
-                <label className="block font-bold text-slate-800 text-xs">
-                  Tipo de Letra Principal del Documento (Tablas, Etiquetas, Datos):
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {FONT_OPTIONS.map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => handleChange('fontFamilyGeneral', f.id)}
-                      className={`text-left p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
-                        form.fontFamilyGeneral === f.id
-                          ? 'border-indigo-600 bg-indigo-50/70 shadow-xs ring-1 ring-indigo-500'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <div className="font-bold text-slate-900 text-xs flex items-center justify-between">
-                        <span>{f.name}</span>
-                        {form.fontFamilyGeneral === f.id && (
-                          <Check className="w-4 h-4 text-indigo-600" />
-                        )}
-                      </div>
-                      <div
-                        className="text-xs text-slate-600 mt-1.5 p-1.5 bg-slate-50 rounded border border-slate-100"
-                        style={{ fontFamily: f.css }}
-                      >
-                        ABCDEF abcdef 0123456789 (Muestra)
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tipografía de Títulos */}
-              <div className="space-y-2 pt-3 border-t border-slate-200">
-                <label className="block font-bold text-slate-800 text-xs">
-                  Tipo de Letra para Títulos Principales y Barras de Sección:
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {[
-                    { id: 'serif' as const, name: 'Serif Formal / Editorial', font: 'ui-serif, Georgia, serif' },
-                    { id: 'sans' as const, name: 'Sans-Serif Moderna / Limpia', font: 'ui-sans-serif, system-ui, sans-serif' },
-                    { id: 'mono' as const, name: 'Monospace Técnica Industrial', font: 'ui-monospace, monospace' },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => handleChange('fontFamilyTitles', t.id)}
-                      className={`text-left p-3 rounded-xl border-2 transition cursor-pointer ${
-                        form.fontFamilyTitles === t.id
-                          ? 'border-indigo-600 bg-indigo-50/70 shadow-xs ring-1 ring-indigo-500'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <div className="font-bold text-slate-900 text-xs flex items-center justify-between">
-                        <span>{t.name}</span>
-                        {form.fontFamilyTitles === t.id && (
-                          <Check className="w-4 h-4 text-indigo-600" />
-                        )}
-                      </div>
-                      <div
-                        className="text-xs font-black uppercase tracking-tight mt-1.5 text-slate-800"
-                        style={{ fontFamily: t.font }}
-                      >
-                        INFORME DE INSPECCIÓN
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 3: TAMAÑO DE CADA TEXTO (INDIVIDUAL)
-             ======================================================== */}
-          {activeTab === 'sizes' && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-indigo-950">
-                <p className="font-bold text-[11px] mb-0.5 flex items-center space-x-1.5">
-                  <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
-                  <span>Ajuste Individual del Tamaño de Cada Texto:</span>
-                </p>
-                <p className="text-[11px] text-indigo-800">
-                  Configura con precisión el tamaño en píxeles (px) para cada elemento de la hoja oficial.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Título Principal */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Título Principal del Informe:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeReportTitle} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={14}
-                    max={28}
-                    step={1}
-                    value={form.fontSizeReportTitle}
-                    onChange={(e) => handleChange('fontSizeReportTitle', parseInt(e.target.value) || 18)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="font-black uppercase truncate text-slate-900 border p-1 rounded bg-white"
-                    style={{ fontSize: `${form.fontSizeReportTitle}px`, fontFamily: activeTitleFontCss }}
-                  >
-                    {form.reportTitle || 'INFORME DE INSPECCIÓN'}
-                  </div>
-                </div>
-
-                {/* Subtítulo Superior */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Subtítulo Superior Normativo:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeHeaderSubtitle} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={7}
-                    max={14}
-                    step={1}
-                    value={form.fontSizeHeaderSubtitle}
-                    onChange={(e) => handleChange('fontSizeHeaderSubtitle', parseInt(e.target.value) || 9)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="font-bold uppercase tracking-widest truncate text-slate-700 border p-1 rounded bg-white"
-                    style={{ fontSize: `${form.fontSizeHeaderSubtitle}px` }}
-                  >
-                    {form.headerSubtitle || 'Formato de Trabajo Normativo'}
-                  </div>
-                </div>
-
-                {/* Referencia de Procedimiento */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Referencia de Procedimiento:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeProcedureRef} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={7}
-                    max={14}
-                    step={1}
-                    value={form.fontSizeProcedureRef}
-                    onChange={(e) => handleChange('fontSizeProcedureRef', parseInt(e.target.value) || 9)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="italic truncate text-slate-700 border p-1 rounded bg-white"
-                    style={{ fontSize: `${form.fontSizeProcedureRef}px` }}
-                  >
-                    {form.procedureReference || 'Procedimiento de Calidad'}
-                  </div>
-                </div>
-
-                {/* Títulos de Secciones */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Títulos de Secciones (I a VII):</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeSectionTitles} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={10}
-                    max={18}
-                    step={1}
-                    value={form.fontSizeSectionTitles}
-                    onChange={(e) => handleChange('fontSizeSectionTitles', parseInt(e.target.value) || 13)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="font-bold uppercase truncate border p-1 rounded"
-                    style={{
-                      fontSize: `${form.fontSizeSectionTitles}px`,
-                      backgroundColor: form.sectionHeaderBgColor,
-                      color: form.sectionHeaderTextColor,
-                      fontFamily: activeTitleFontCss,
-                    }}
-                  >
-                    I. DATOS GENERALES DE INSPECCIÓN
-                  </div>
-                </div>
-
-                {/* Etiquetas de Celdas */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Etiquetas de Celdas Fijas:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeCellLabels} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={8}
-                    max={14}
-                    step={1}
-                    value={form.fontSizeCellLabels}
-                    onChange={(e) => handleChange('fontSizeCellLabels', parseInt(e.target.value) || 10)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="font-bold uppercase border p-1 rounded"
-                    style={{
-                      fontSize: `${form.fontSizeCellLabels}px`,
-                      backgroundColor: form.cellLabelBgColor,
-                      color: form.cellLabelTextColor,
-                    }}
-                  >
-                    INSPECTOR: / FECHA: / LOTE TOTAL (N):
-                  </div>
-                </div>
-
-                {/* Valores y Datos en Celdas */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Texto de Valores y Datos en Celdas:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeCellValues} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={9}
-                    max={16}
-                    step={1}
-                    value={form.fontSizeCellValues}
-                    onChange={(e) => handleChange('fontSizeCellValues', parseInt(e.target.value) || 12)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="font-medium border p-1 rounded bg-white"
-                    style={{
-                      fontSize: `${form.fontSizeCellValues}px`,
-                      color: form.cellValueTextColor,
-                    }}
-                  >
-                    Lic. Laura Martínez / 500 Piezas / C0361-02
-                  </div>
-                </div>
-
-                {/* Metadatos (Código, Versión, Folio) */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Etiquetas Metadatos Encabezado:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeMetadataLabels} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={7}
-                    max={13}
-                    step={1}
-                    value={form.fontSizeMetadataLabels}
-                    onChange={(e) => handleChange('fontSizeMetadataLabels', parseInt(e.target.value) || 9)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="font-mono font-bold border p-1 rounded bg-white"
-                    style={{
-                      fontSize: `${form.fontSizeMetadataLabels}px`,
-                      color: form.metadataLabelTextColor,
-                    }}
-                  >
-                    CÓDIGO: VERSIÓN: REVISIÓN:
-                  </div>
-                </div>
-
-                {/* Encabezados de Tablas Secundarias */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Encabezados Tablas Internas:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeTableHeaders} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={8}
-                    max={14}
-                    step={1}
-                    value={form.fontSizeTableHeaders}
-                    onChange={(e) => handleChange('fontSizeTableHeaders', parseInt(e.target.value) || 10)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="font-bold uppercase border p-1 rounded"
-                    style={{
-                      fontSize: `${form.fontSizeTableHeaders}px`,
-                      backgroundColor: form.tableSubHeaderBgColor,
-                      color: form.tableSubHeaderTextColor,
-                    }}
-                  >
-                    Categoría / Criterio / Severidad / Defectos
-                  </div>
-                </div>
-
-                {/* Nota al Pie de Página */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-800">Nota Legal de Pie de Página:</span>
-                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border text-indigo-700">
-                      {form.fontSizeFooterNote || 9} px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={7}
-                    max={12}
-                    step={1}
-                    value={form.fontSizeFooterNote || 9}
-                    onChange={(e) => handleChange('fontSizeFooterNote', parseInt(e.target.value) || 9)}
-                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div
-                    className="italic font-mono border p-1 rounded bg-white truncate"
-                    style={{
-                      fontSize: `${form.fontSizeFooterNote || 9}px`,
-                      color: form.subtitleTextColor,
-                    }}
-                  >
-                    Documento normativo propiedad de Suave y Fácil S. A. de C.V.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 4: COLOR DE LAS LETRAS DE CADA TEXTO (INDIVIDUAL)
-             ======================================================== */}
-          {activeTab === 'textColors' && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 text-indigo-950">
-                <p className="font-bold text-[11px] mb-0.5 flex items-center space-x-1.5">
-                  <Paintbrush className="w-4 h-4 text-indigo-600" />
-                  <span>Color de Letra Individual para Cada Elemento:</span>
-                </p>
-                <p className="text-[11px] text-indigo-800">
-                  Personaliza el color de texto exacto de cada elemento de manera independiente.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Color de Letra: Título Principal */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Título Principal:</label>
-                    <span className="text-[10px] text-slate-500">Ej. INFORME DE INSPECCIÓN</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.titleTextColor}
-                      onChange={(e) => handleChange('titleTextColor', e.target.value)}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.titleTextColor}
-                      onChange={(e) => handleChange('titleTextColor', e.target.value)}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Subtítulo Superior */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Subtítulo Superior:</label>
-                    <span className="text-[10px] text-slate-500">Ej. Formato de Trabajo Normativo</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.subtitleTextColor}
-                      onChange={(e) => handleChange('subtitleTextColor', e.target.value)}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.subtitleTextColor}
-                      onChange={(e) => handleChange('subtitleTextColor', e.target.value)}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Referencia Procedimiento */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Procedimiento / Referencia:</label>
-                    <span className="text-[10px] text-slate-500">Texto en cursiva bajo título</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.procedureRefTextColor}
-                      onChange={(e) => handleChange('procedureRefTextColor', e.target.value)}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.procedureRefTextColor}
-                      onChange={(e) => handleChange('procedureRefTextColor', e.target.value)}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Títulos de Sección */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Títulos de Secciones (I-VII):</label>
-                    <span className="text-[10px] text-slate-500">Texto sobre barras de sección</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.sectionHeaderTextColor}
-                      onChange={(e) => {
-                        handleChange('sectionHeaderTextColor', e.target.value);
-                        handleChange('headerTextColor', e.target.value);
-                      }}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.sectionHeaderTextColor}
-                      onChange={(e) => {
-                        handleChange('sectionHeaderTextColor', e.target.value);
-                        handleChange('headerTextColor', e.target.value);
-                      }}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Etiquetas de Celdas */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Etiquetas de Celdas:</label>
-                    <span className="text-[10px] text-slate-500">Inspector:, Fecha:, Clave/SKU:</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.cellLabelTextColor}
-                      onChange={(e) => {
-                        handleChange('cellLabelTextColor', e.target.value);
-                        handleChange('cellHeaderTextColor', e.target.value);
-                      }}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.cellLabelTextColor}
-                      onChange={(e) => {
-                        handleChange('cellLabelTextColor', e.target.value);
-                        handleChange('cellHeaderTextColor', e.target.value);
-                      }}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Valores y Datos */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Texto de Datos / Valores:</label>
-                    <span className="text-[10px] text-slate-500">Datos escritos e ingresados</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.cellValueTextColor}
-                      onChange={(e) => handleChange('cellValueTextColor', e.target.value)}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.cellValueTextColor}
-                      onChange={(e) => handleChange('cellValueTextColor', e.target.value)}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Etiquetas Metadatos */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Etiquetas Metadatos:</label>
-                    <span className="text-[10px] text-slate-500">CÓDIGO:, VERSIÓN:, REVISIÓN:</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.metadataLabelTextColor}
-                      onChange={(e) => handleChange('metadataLabelTextColor', e.target.value)}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.metadataLabelTextColor}
-                      onChange={(e) => handleChange('metadataLabelTextColor', e.target.value)}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Valores Metadatos */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-800">Valores de Metadatos:</label>
-                    <span className="text-[10px] text-slate-500">Ej. CVD-CCA-F-08, 00, 2026-08</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.metadataValueTextColor}
-                      onChange={(e) => handleChange('metadataValueTextColor', e.target.value)}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.metadataValueTextColor}
-                      onChange={(e) => handleChange('metadataValueTextColor', e.target.value)}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Letra: Cabeceras de Tablas */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between col-span-1 sm:col-span-2">
-                  <div>
-                    <label className="block font-bold text-slate-800">Texto Cabeceras de Tablas Internas:</label>
-                    <span className="text-[10px] text-slate-500">Cabeceras de AQL, Matriz de defectos e insumos</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="color"
-                      value={form.tableSubHeaderTextColor}
-                      onChange={(e) => handleChange('tableSubHeaderTextColor', e.target.value)}
-                      className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={form.tableSubHeaderTextColor}
-                      onChange={(e) => handleChange('tableSubHeaderTextColor', e.target.value)}
-                      className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 5: COLORES DE RECUADROS Y FONDOS
-             ======================================================== */}
-          {activeTab === 'boxColors' && (
-            <div className="space-y-4 animate-in fade-in">
-              {/* Presets Rápidos */}
-              <div>
-                <label className="block font-bold text-slate-800 mb-1.5">
-                  Paletas de Color Rápidas (Aplicar con 1 Clic):
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {COLOR_PRESETS.map((preset, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleApplyPreset(preset)}
-                      className="text-left p-2 rounded-xl border border-slate-200 hover:border-slate-400 hover:shadow-xs transition bg-white flex items-center space-x-2 cursor-pointer"
-                    >
-                      <div
-                        className="w-5 h-5 rounded-md border shrink-0"
-                        style={{ backgroundColor: preset.sectionHeaderBg, borderColor: preset.border }}
-                      />
-                      <span className="text-[11px] font-bold text-slate-800 truncate">
-                        {preset.name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Selectores Específicos de Fondo y Bordes */}
-              <div className="pt-3 border-t border-slate-200 space-y-3">
-                <label className="block font-bold text-slate-800">
-                  Colores de Fondo de Celdas y Bordes:
-                </label>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {/* Fondo de Barras de Sección */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-800 block">Fondo de Barras de Sección:</span>
-                      <span className="text-[10px] text-slate-500">Color de fondo de Secciones I a VII</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="color"
-                        value={form.sectionHeaderBgColor || form.headerBgColor}
-                        onChange={(e) => {
-                          handleChange('sectionHeaderBgColor', e.target.value);
-                          handleChange('headerBgColor', e.target.value);
-                        }}
-                        className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={form.sectionHeaderBgColor || form.headerBgColor}
-                        onChange={(e) => {
-                          handleChange('sectionHeaderBgColor', e.target.value);
-                          handleChange('headerBgColor', e.target.value);
-                        }}
-                        className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Color de Bordes y Cuadrícula */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-800 block">Líneas y Bordes de Cuadrícula:</span>
-                      <span className="text-[10px] text-slate-500">Color de líneas de todas las tablas</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="color"
-                        value={form.tableBorderColor}
-                        onChange={(e) => handleChange('tableBorderColor', e.target.value)}
-                        className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={form.tableBorderColor}
-                        onChange={(e) => handleChange('tableBorderColor', e.target.value)}
-                        className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Fondo de Celdas de Etiquetas */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-800 block">Fondo de Celdas de Etiquetas:</span>
-                      <span className="text-[10px] text-slate-500">Celdas de encabezado fijas</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="color"
-                        value={form.cellLabelBgColor || form.cellHeaderBgColor}
-                        onChange={(e) => {
-                          handleChange('cellLabelBgColor', e.target.value);
-                          handleChange('cellHeaderBgColor', e.target.value);
-                        }}
-                        className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={form.cellLabelBgColor || form.cellHeaderBgColor}
-                        onChange={(e) => {
-                          handleChange('cellLabelBgColor', e.target.value);
-                          handleChange('cellHeaderBgColor', e.target.value);
-                        }}
-                        className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Fondo de Bloque de Metadatos Superior */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-800 block">Fondo Bloque Metadatos:</span>
-                      <span className="text-[10px] text-slate-500">Recuadro superior derecho</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="color"
-                        value={form.metadataBgColor}
-                        onChange={(e) => handleChange('metadataBgColor', e.target.value)}
-                        className="w-8 h-8 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={form.metadataBgColor}
-                        onChange={(e) => handleChange('metadataBgColor', e.target.value)}
-                        className="font-mono text-xs w-20 px-2 py-1 border border-slate-300 rounded bg-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 6: TÍTULOS Y TEXTOS FIJOS DEL ENCABEZADO
-             ======================================================== */}
-          {activeTab === 'titles' && (
-            <div className="space-y-3.5 animate-in fade-in">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-indigo-900">
-                <p className="font-bold text-[11px] mb-0.5">Textos Normativos del Formato Oficial:</p>
-                <p className="text-[11px] text-indigo-800">
-                  Modifica los textos normativos fijos que encabezan la hoja de inspección.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="block font-bold text-slate-800 mb-1">
-                    Título Principal del Documento:
-                  </label>
-                  <input
-                    type="text"
-                    value={form.reportTitle}
-                    onChange={(e) => handleChange('reportTitle', e.target.value)}
-                    placeholder="INFORME DE INSPECCIÓN MAQUILA"
-                    className="w-full font-black text-sm px-3 py-2 border-2 border-slate-300 rounded-xl focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Subtítulo Superior:
-                  </label>
-                  <input
-                    type="text"
-                    value={form.headerSubtitle}
-                    onChange={(e) => handleChange('headerSubtitle', e.target.value)}
-                    placeholder="Formato de Trabajo Normativo"
-                    className="w-full font-semibold px-3 py-2 border border-slate-300 rounded-xl focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Procedimiento / Referencia Normativa:
-                  </label>
-                  <input
-                    type="text"
-                    value={form.procedureReference}
-                    onChange={(e) => handleChange('procedureReference', e.target.value)}
-                    placeholder="Procedimiento CVD-AMA-PR-01 • Gestión e Intervención de Productos"
-                    className="w-full font-semibold px-3 py-2 border border-slate-300 rounded-xl focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Código Oficial del Formato:
-                  </label>
-                  <input
-                    type="text"
-                    value={form.documentCode}
-                    onChange={(e) => handleChange('documentCode', e.target.value)}
-                    placeholder="CVD-CCA-F-08"
-                    className="w-full font-mono font-black px-3 py-2 border border-slate-300 rounded-xl focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Versión Oficial del Formato:
-                  </label>
-                  <input
-                    type="text"
-                    value={form.version}
-                    onChange={(e) => handleChange('version', e.target.value)}
-                    placeholder="00"
-                    className="w-full font-mono font-bold px-3 py-2 border border-slate-300 rounded-xl focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Fecha de Revisión Documental:
-                  </label>
-                  <input
-                    type="date"
-                    value={form.revisionDate}
-                    onChange={(e) => handleChange('revisionDate', e.target.value)}
-                    className="w-full font-mono px-3 py-2 border border-slate-300 rounded-xl focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================
-              TAB 7: TÍTULOS DE SECCIONES (I A VII)
-             ======================================================== */}
-          {activeTab === 'sections' && (
-            <div className="space-y-3 animate-in fade-in">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-indigo-900">
-                <p className="font-bold text-[11px] mb-0.5">Títulos de Secciones I a VII:</p>
-                <p className="text-[11px] text-indigo-800">
-                  Renombra los encabezados que dividen cada sección del formato oficial según tus requerimientos.
-                </p>
-              </div>
-
-              <div className="space-y-2.5">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Sección I:</label>
-                  <input
-                    type="text"
-                    value={form.section1Title}
-                    onChange={(e) => handleChange('section1Title', e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Sección II:</label>
-                  <input
-                    type="text"
-                    value={form.section2Title}
-                    onChange={(e) => handleChange('section2Title', e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Sección III:</label>
-                  <input
-                    type="text"
-                    value={form.section3Title}
-                    onChange={(e) => handleChange('section3Title', e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Sección IV:</label>
-                  <input
-                    type="text"
-                    value={form.section4Title}
-                    onChange={(e) => handleChange('section4Title', e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Sección V:</label>
-                  <input
-                    type="text"
-                    value={form.section5Title}
-                    onChange={(e) => handleChange('section5Title', e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Sección VI:</label>
-                  <input
-                    type="text"
-                    value={form.section6Title}
-                    onChange={(e) => handleChange('section6Title', e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Sección VII:</label>
-                  <input
-                    type="text"
-                    value={form.section7Title}
-                    onChange={(e) => handleChange('section7Title', e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer de Acciones */}
-        <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex items-center justify-between shrink-0">
-          <button
-            type="button"
-            onClick={handleResetToDefaults}
-            className="flex items-center space-x-1.5 text-xs text-slate-600 hover:text-slate-900 font-bold px-3 py-2 rounded-xl hover:bg-slate-200 transition cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Restablecer Valores Iniciales</span>
-          </button>
 
           <div className="flex items-center space-x-2">
-            {savedSuccess && (
-              <span className="text-emerald-700 font-bold text-xs flex items-center space-x-1 bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-300 animate-in fade-in">
-                <Check className="w-4 h-4 text-emerald-600" />
-                <span>¡Cambios Guardados Exitosamente!</span>
+            {/* Controles de Zoom para la hoja */}
+            <div className="hidden sm:flex items-center bg-slate-900 border border-slate-800 rounded-xl px-2 py-1 space-x-1 text-slate-300">
+              <button
+                type="button"
+                onClick={() => setZoom((prev) => Math.max(0.6, Math.round((prev - 0.1) * 100) / 100))}
+                className="p-1 hover:text-white hover:bg-slate-800 rounded transition cursor-pointer"
+                title="Alejar hoja"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-xs font-mono font-bold w-12 text-center text-emerald-400">
+                {Math.round(zoom * 100)}%
               </span>
+              <button
+                type="button"
+                onClick={() => setZoom((prev) => Math.min(1.25, Math.round((prev + 0.1) * 100) / 100))}
+                className="p-1 hover:text-white hover:bg-slate-800 rounded transition cursor-pointer"
+                title="Acercar hoja"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(0.85)}
+                className="text-[10px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 hover:text-white font-semibold transition cursor-pointer"
+                title="Ajustar a 85%"
+              >
+                Reset
+              </button>
+            </div>
+
+            {onOpenCatalogUpload && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenCatalogUpload();
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow flex items-center space-x-1.5 transition active:scale-95 cursor-pointer"
+                title="Abrir la ventana de catálogo de armados y componentes (Excel / CSV)"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Catálogo Armados</span>
+              </button>
             )}
+
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              onClick={handleResetToDefaults}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-700 flex items-center space-x-1.5 transition active:scale-95 cursor-pointer"
+              title="Restablecer valores de fábrica"
             >
-              Cancelar
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Restablecer</span>
             </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadTestPdf}
+              disabled={isExportingPdf}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-md flex items-center space-x-1.5 transition active:scale-95 cursor-pointer"
+              title="Descargar Hoja Oficial PDF en tamaño carta exacto con la configuración visual actual"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">{isExportingPdf ? 'Generando...' : 'Probar PDF Carta'}</span>
+            </button>
+
             <button
               type="button"
               onClick={handleSave}
-              className="flex items-center space-x-2 px-5 py-2 text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition active:scale-95 cursor-pointer"
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs px-4 py-1.5 rounded-xl shadow-lg flex items-center space-x-1.5 transition active:scale-95 cursor-pointer"
             >
-              <Save className="w-4 h-4" />
-              <span>Guardar Configuración</span>
+              {savedSuccess ? (
+                <>
+                  <Check className="w-4 h-4 text-slate-950 stroke-[3]" />
+                  <span>¡Aplicado!</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Guardar y Aplicar</span>
+                </>
+              )}
             </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition cursor-pointer ml-1"
+              title="Cerrar diseñador"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* ================= CONTENEDOR PRINCIPAL: PANEL IZQ (CONTROLES) + PANEL DER (HOJA CARTA 1:1) ================= */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden bg-slate-950">
+          {/* PANEL IZQUIERDO: HERRAMIENTAS Y ESTILOS (4 COLUMNAS) */}
+          <div className="lg:col-span-5 xl:col-span-4 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden h-full">
+            {/* Pestañas de configuración */}
+            <div className="flex border-b border-slate-800 bg-slate-950/80 p-1.5 gap-1 shrink-0 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setActiveTab('alignment')}
+                className={`flex-1 min-w-[68px] py-1.5 px-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
+                  activeTab === 'alignment'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <AlignCenter className="w-3.5 h-3.5" />
+                <span className="text-[10px] whitespace-nowrap">Alineación</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('colors')}
+                className={`flex-1 min-w-[68px] py-1.5 px-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
+                  activeTab === 'colors'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span className="text-[10px] whitespace-nowrap">Colores</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('spacing')}
+                className={`flex-1 min-w-[68px] py-1.5 px-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
+                  activeTab === 'spacing'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <MoveVertical className="w-3.5 h-3.5" />
+                <span className="text-[10px] whitespace-nowrap">Espaciado</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('typography')}
+                className={`flex-1 min-w-[68px] py-1.5 px-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
+                  activeTab === 'typography'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Type className="w-3.5 h-3.5" />
+                <span className="text-[10px] whitespace-nowrap">Fuentes</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('texts')}
+                className={`flex-1 min-w-[68px] py-1.5 px-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
+                  activeTab === 'texts'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="text-[10px] whitespace-nowrap">Textos/Logo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('presets')}
+                className={`flex-1 min-w-[68px] py-1.5 px-2 rounded-lg text-xs font-bold flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
+                  activeTab === 'presets'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="text-[10px] whitespace-nowrap">Plantillas</span>
+              </button>
+            </div>
+
+            {/* Contenido de la pestaña activa */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-slate-200 text-xs">
+              {/* ========== PESTAÑA 1: ALINEACIÓN Y CENTRADO (WORD STYLE) ========== */}
+              {activeTab === 'alignment' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-800/70 p-3 rounded-xl border border-slate-700/60 space-y-3">
+                    <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <AlignCenter className="w-4 h-4 text-emerald-400" />
+                      <span>Alineación de Encabezados (Estilo Word)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Personaliza hacia dónde se orienta cada línea de la cabecera normativa como en Microsoft Word.
+                    </p>
+
+                    {/* Título Principal del Reporte */}
+                    <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Título Principal del Reporte</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold capitalize">
+                          {form.alignReportTitle}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['left', 'center', 'right'] as const).map((align) => (
+                          <button
+                            key={align}
+                            type="button"
+                            onClick={() => handleChange('alignReportTitle', align)}
+                            className={`py-1.5 px-2 rounded border flex items-center justify-center space-x-1 text-xs font-bold transition cursor-pointer ${
+                              form.alignReportTitle === align
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
+                            {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
+                            {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                            <span className="capitalize">{align === 'left' ? 'Izq' : align === 'center' ? 'Centro' : 'Der'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Subtítulo Normativo Superior */}
+                    <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Subtítulo Normativo Superior</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold capitalize">
+                          {form.alignHeaderSubtitle}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['left', 'center', 'right'] as const).map((align) => (
+                          <button
+                            key={align}
+                            type="button"
+                            onClick={() => handleChange('alignHeaderSubtitle', align)}
+                            className={`py-1.5 px-2 rounded border flex items-center justify-center space-x-1 text-xs font-bold transition cursor-pointer ${
+                              form.alignHeaderSubtitle === align
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
+                            {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
+                            {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                            <span className="capitalize">{align === 'left' ? 'Izq' : align === 'center' ? 'Centro' : 'Der'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Referencia de Procedimiento */}
+                    <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Referencia de Procedimiento</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold capitalize">
+                          {form.alignProcedureRef}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['left', 'center', 'right'] as const).map((align) => (
+                          <button
+                            key={align}
+                            type="button"
+                            onClick={() => handleChange('alignProcedureRef', align)}
+                            className={`py-1.5 px-2 rounded border flex items-center justify-center space-x-1 text-xs font-bold transition cursor-pointer ${
+                              form.alignProcedureRef === align
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
+                            {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
+                            {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                            <span className="capitalize">{align === 'left' ? 'Izq' : align === 'center' ? 'Centro' : 'Der'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Barras de Título de Secciones (I - VII) */}
+                    <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Títulos de Secciones (I a VII)</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold capitalize">
+                          {form.alignSectionTitles}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['left', 'center', 'right'] as const).map((align) => (
+                          <button
+                            key={align}
+                            type="button"
+                            onClick={() => handleChange('alignSectionTitles', align)}
+                            className={`py-1.5 px-2 rounded border flex items-center justify-center space-x-1 text-xs font-bold transition cursor-pointer ${
+                              form.alignSectionTitles === align
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
+                            {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
+                            {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                            <span className="capitalize">{align === 'left' ? 'Izq' : align === 'center' ? 'Centro' : 'Der'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========== PESTAÑA 2: COLORES DE LETRAS Y ELEMENTOS ========== */}
+              {activeTab === 'colors' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-800/70 p-3 rounded-xl border border-slate-700/60 space-y-3">
+                    <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <Palette className="w-4 h-4 text-emerald-400" />
+                      <span>Color de Cada Letra y Elemento</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Modifica individualmente el color de la letra para cada título, texto de celda o barra.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Color de Título Principal */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Letra: Título Principal
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.titleTextColor}
+                            onChange={(e) => handleChange('titleTextColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.titleTextColor}
+                            onChange={(e) => handleChange('titleTextColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Color de Subtítulo */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Letra: Subtítulo Normativo
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.subtitleTextColor}
+                            onChange={(e) => handleChange('subtitleTextColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.subtitleTextColor}
+                            onChange={(e) => handleChange('subtitleTextColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Color de Procedimiento */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Letra: Procedimiento
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.procedureRefTextColor}
+                            onChange={(e) => handleChange('procedureRefTextColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.procedureRefTextColor}
+                            onChange={(e) => handleChange('procedureRefTextColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Fondo de Barra de Sección */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Fondo: Barras de Sección (I - VII)
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.sectionHeaderBgColor}
+                            onChange={(e) => handleChange('sectionHeaderBgColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.sectionHeaderBgColor}
+                            onChange={(e) => handleChange('sectionHeaderBgColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Letra de Barra de Sección */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Letra: Barras de Sección
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.sectionHeaderTextColor}
+                            onChange={(e) => handleChange('sectionHeaderTextColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.sectionHeaderTextColor}
+                            onChange={(e) => handleChange('sectionHeaderTextColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Fondo de Etiquetas de Celdas */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Fondo: Etiquetas de Celdas
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.cellLabelBgColor}
+                            onChange={(e) => handleChange('cellLabelBgColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.cellLabelBgColor}
+                            onChange={(e) => handleChange('cellLabelBgColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Letra de Etiquetas de Celdas */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Letra: Etiquetas de Celdas
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.cellLabelTextColor}
+                            onChange={(e) => handleChange('cellLabelTextColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.cellLabelTextColor}
+                            onChange={(e) => handleChange('cellLabelTextColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Letra de Valores y Datos */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Letra: Valores y Datos Escritos
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.cellValueTextColor}
+                            onChange={(e) => handleChange('cellValueTextColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.cellValueTextColor}
+                            onChange={(e) => handleChange('cellValueTextColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Color de Bordes de Tablas */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Color de Líneas y Bordes
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.tableBorderColor}
+                            onChange={(e) => handleChange('tableBorderColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.tableBorderColor}
+                            onChange={(e) => handleChange('tableBorderColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Fondo de Metadatos */}
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 block">
+                          Fondo: Recuadro Metadatos
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={form.metadataBgColor}
+                            onChange={(e) => handleChange('metadataBgColor', e.target.value)}
+                            className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.metadataBgColor}
+                            onChange={(e) => handleChange('metadataBgColor', e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========== PESTAÑA 3: ESPACIADO Y ANTI-CORTE DE CELDAS ========== */}
+              {activeTab === 'spacing' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-800/70 p-3 rounded-xl border border-slate-700/60 space-y-3">
+                    <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <MoveVertical className="w-4 h-4 text-emerald-400" />
+                      <span>Espaciado de Celdas (Anti-Cortes de Texto)</span>
+                    </h3>
+                    <p className="text-[11px] text-emerald-300 bg-emerald-950/60 p-2 rounded-lg border border-emerald-600/40">
+                      💡 <strong>Solución a textos cortados:</strong> Aumenta el relleno vertical y el interlineado para evitar que las líneas divisorias horizontales de la tabla atraviesen letras descendentes (g, p, y, q).
+                    </p>
+
+                    {/* Relleno Vertical de Celda */}
+                    <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Relleno Vertical (Padding Top / Bottom)</span>
+                        <span className="font-mono font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
+                          {padV} px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={3}
+                        max={14}
+                        step={1}
+                        value={padV}
+                        onChange={(e) => handleChange('cellPaddingVertical', parseInt(e.target.value) || 6)}
+                        className="w-full accent-emerald-500 cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>3px (Muy Compacto)</span>
+                        <span>6px (Estándar)</span>
+                        <span>14px (Muy Amplio)</span>
+                      </div>
+                    </div>
+
+                    {/* Relleno Horizontal de Celda */}
+                    <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Relleno Horizontal (Padding Left / Right)</span>
+                        <span className="font-mono font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
+                          {padH} px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={4}
+                        max={16}
+                        step={1}
+                        value={padH}
+                        onChange={(e) => handleChange('cellPaddingHorizontal', parseInt(e.target.value) || 8)}
+                        className="w-full accent-emerald-500 cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>4px (Estrecho)</span>
+                        <span>8px (Normal)</span>
+                        <span>16px (Espacioso)</span>
+                      </div>
+                    </div>
+
+                    {/* Interlineado del Documento */}
+                    <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Interlineado (Line-Height Multiplier)</span>
+                        <span className="font-mono font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
+                          {lineH}x
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1.15}
+                        max={1.80}
+                        step={0.05}
+                        value={lineH}
+                        onChange={(e) => handleChange('lineHeightMultiplier', parseFloat(e.target.value) || 1.4)}
+                        className="w-full accent-emerald-500 cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>1.15x (Apretado)</span>
+                        <span>1.40x (Recomendado)</span>
+                        <span>1.80x (Aireado)</span>
+                      </div>
+                    </div>
+
+                    {/* Grosor de Bordes de Tablas */}
+                    <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-800 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-300">Grosor de Líneas y Bordes de Tablas</span>
+                        <span className="font-mono font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
+                          {bWidth} px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={4}
+                        step={1}
+                        value={bWidth}
+                        onChange={(e) => handleChange('tableBorderWidth', parseInt(e.target.value) || 2)}
+                        className="w-full accent-emerald-500 cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>1px (Fino)</span>
+                        <span>2px (Oficial Normativo)</span>
+                        <span>4px (Marcado)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========== PESTAÑA 4: TIPOGRAFÍA Y TAMAÑOS ========== */}
+              {activeTab === 'typography' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-800/70 p-3 rounded-xl border border-slate-700/60 space-y-3">
+                    <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <Type className="w-4 h-4 text-emerald-400" />
+                      <span>Tipografías y Tamaños de Letra</span>
+                    </h3>
+
+                    {/* Tipografía General */}
+                    <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                      <label className="text-xs font-bold text-slate-300 block">
+                        Familia Tipográfica del Documento
+                      </label>
+                      <select
+                        value={form.fontFamilyGeneral}
+                        onChange={(e) => handleChange('fontFamilyGeneral', e.target.value as any)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs font-bold text-white focus:outline-emerald-500 cursor-pointer"
+                      >
+                        {FONT_OPTIONS.map((font) => (
+                          <option key={font.id} value={font.id}>
+                            {font.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Sliders de Tamaño */}
+                    <div className="space-y-2.5 pt-1">
+                      <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                        <div className="flex justify-between items-center text-[11px] mb-1">
+                          <span className="font-semibold text-slate-300">Título Principal del Reporte</span>
+                          <span className="font-mono text-emerald-400 font-bold">{form.fontSizeReportTitle} px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={12}
+                          max={26}
+                          value={form.fontSizeReportTitle}
+                          onChange={(e) => handleChange('fontSizeReportTitle', parseInt(e.target.value) || 18)}
+                          className="w-full accent-emerald-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                        <div className="flex justify-between items-center text-[11px] mb-1">
+                          <span className="font-semibold text-slate-300">Títulos de Secciones (I - VII)</span>
+                          <span className="font-mono text-emerald-400 font-bold">{form.fontSizeSectionTitles} px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10}
+                          max={18}
+                          value={form.fontSizeSectionTitles}
+                          onChange={(e) => handleChange('fontSizeSectionTitles', parseInt(e.target.value) || 13)}
+                          className="w-full accent-emerald-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                        <div className="flex justify-between items-center text-[11px] mb-1">
+                          <span className="font-semibold text-slate-300">Etiquetas de Celdas</span>
+                          <span className="font-mono text-emerald-400 font-bold">{form.fontSizeCellLabels} px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={8}
+                          max={14}
+                          value={form.fontSizeCellLabels}
+                          onChange={(e) => handleChange('fontSizeCellLabels', parseInt(e.target.value) || 10)}
+                          className="w-full accent-emerald-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                        <div className="flex justify-between items-center text-[11px] mb-1">
+                          <span className="font-semibold text-slate-300">Valores y Datos de Celdas</span>
+                          <span className="font-mono text-emerald-400 font-bold">{form.fontSizeCellValues} px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={9}
+                          max={16}
+                          value={form.fontSizeCellValues}
+                          onChange={(e) => handleChange('fontSizeCellValues', parseInt(e.target.value) || 12)}
+                          className="w-full accent-emerald-500 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========== PESTAÑA 5: TEXTOS NORMATIVOS Y LOGO ========== */}
+              {activeTab === 'texts' && (
+                <div className="space-y-4">
+                  {/* Logotipo */}
+                  <div className="bg-slate-800/70 p-3 rounded-xl border border-slate-700/60 space-y-3">
+                    <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <ImageIcon className="w-4 h-4 text-emerald-400" />
+                      <span>Logotipo de la Empresa</span>
+                    </h3>
+
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(true);
+                      }}
+                      onDragLeave={() => setIsDragOver(false)}
+                      onDrop={handleDrop}
+                      className={`border-2 border-dashed rounded-xl p-3 text-center transition ${
+                        isDragOver
+                          ? 'border-emerald-500 bg-emerald-950/30'
+                          : 'border-slate-700 hover:border-slate-500 bg-slate-900/50'
+                      }`}
+                    >
+                      {form.logoImageUrl ? (
+                        <div className="flex flex-col items-center space-y-2">
+                          <img
+                            src={form.logoImageUrl}
+                            alt="Logo"
+                            style={{ maxHeight: `${Math.min(form.logoHeight || 48, 65)}px` }}
+                            className="object-contain bg-white p-1 rounded"
+                          />
+                          <div className="flex space-x-2">
+                            <label className="bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold px-2.5 py-1 rounded cursor-pointer border border-slate-700 transition">
+                              <span>Cambiar Imagen</span>
+                              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleChange('logoImageUrl', '')}
+                              className="bg-red-950/80 hover:bg-red-900 text-red-300 text-[11px] font-bold px-2.5 py-1 rounded border border-red-700 transition flex items-center space-x-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Quitar</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center cursor-pointer py-3">
+                          <Upload className="w-6 h-6 text-slate-400 mb-1" />
+                          <span className="text-xs font-bold text-slate-300">Arrastra una imagen o haz clic aquí</span>
+                          <span className="text-[10px] text-slate-500">PNG, JPG, SVG o WebP</span>
+                          <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                        </label>
+                      )}
+                    </div>
+
+                    {form.logoImageUrl && (
+                      <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-300">Altura del Logo</span>
+                          <span className="font-mono text-emerald-400 font-bold">{form.logoHeight || 48} px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={25}
+                          max={85}
+                          value={form.logoHeight || 48}
+                          onChange={(e) => handleChange('logoHeight', parseInt(e.target.value) || 48)}
+                          className="w-full accent-emerald-500 cursor-pointer"
+                        />
+                      </div>
+                    )}
+
+                    <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300 block">
+                        Subtítulo Bajo el Logo
+                      </label>
+                      <input
+                        type="text"
+                        value={form.logoSubtitle}
+                        onChange={(e) => handleChange('logoSubtitle', e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1 text-xs font-semibold text-white focus:outline-emerald-500"
+                        placeholder="Ej. CALIDAD EN OPERACIONES Y MAQUILA"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Textos Oficiales */}
+                  <div className="bg-slate-800/70 p-3 rounded-xl border border-slate-700/60 space-y-2.5">
+                    <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                      <span>Textos del Formato Normativo</span>
+                    </h3>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-0.5">Título del Reporte</label>
+                      <input
+                        type="text"
+                        value={form.reportTitle}
+                        onChange={(e) => handleChange('reportTitle', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs font-bold text-white focus:outline-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-0.5">Subtítulo Normativo</label>
+                      <input
+                        type="text"
+                        value={form.headerSubtitle}
+                        onChange={(e) => handleChange('headerSubtitle', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs font-semibold text-white focus:outline-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-0.5">Procedimiento Normativo</label>
+                      <input
+                        type="text"
+                        value={form.procedureReference}
+                        onChange={(e) => handleChange('procedureReference', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs font-semibold text-white focus:outline-emerald-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-0.5">Código Oficial</label>
+                        <input
+                          type="text"
+                          value={form.documentCode}
+                          onChange={(e) => handleChange('documentCode', e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs font-mono font-bold text-white focus:outline-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-0.5">Versión</label>
+                        <input
+                          type="text"
+                          value={form.version}
+                          onChange={(e) => handleChange('version', e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs font-mono font-bold text-white focus:outline-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========== PESTAÑA 6: PLANTILLAS PREDEFINIDAS ========== */}
+              {activeTab === 'presets' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-800/70 p-3 rounded-xl border border-slate-700/60 space-y-3">
+                    <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center space-x-1.5">
+                      <Sparkles className="w-4 h-4 text-emerald-400" />
+                      <span>Plantillas de Diseño Preconfiguradas (1 Clic)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Aplica al instante paletas de colores corporativos probadas y normativas.
+                    </p>
+
+                    <div className="space-y-2">
+                      {COLOR_PRESETS.map((preset) => (
+                        <div
+                          key={preset.name}
+                          onClick={() => handleApplyPreset(preset)}
+                          className="p-2.5 rounded-xl border border-slate-700 hover:border-emerald-500 bg-slate-900 hover:bg-slate-850 cursor-pointer transition flex items-center justify-between group"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="flex -space-x-1">
+                              <span
+                                className="w-5 h-5 rounded-full border border-slate-700 shadow-sm"
+                                style={{ backgroundColor: preset.sectionHeaderBg }}
+                              />
+                              <span
+                                className="w-5 h-5 rounded-full border border-slate-700 shadow-sm"
+                                style={{ backgroundColor: preset.border }}
+                              />
+                              <span
+                                className="w-5 h-5 rounded-full border border-slate-700 shadow-sm"
+                                style={{ backgroundColor: preset.cellLabelBg }}
+                              />
+                            </div>
+                            <span className="font-bold text-xs text-slate-200 group-hover:text-emerald-400 transition">
+                              {preset.name}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 group-hover:text-emerald-400 font-bold uppercase tracking-wider">
+                            Aplicar
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ================= PANEL DERECHO: HOJA CARTA EN VIVO TIPO WORD (7/8 COLUMNAS) ================= */}
+          <div className="lg:col-span-7 xl:col-span-8 bg-slate-950 flex flex-col h-full overflow-hidden relative">
+            {/* Cabecera del Lienzo */}
+            <div className="bg-slate-900/90 px-4 py-2 border-b border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Lienzo de Hoja Tamaño Carta (Word Layout 1:1)</span>
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono">
+                8.5" x 11" (Letter) • Cambios en tiempo real
+              </span>
+            </div>
+
+            {/* Área de trabajo de desplazamiento con la hoja centrada */}
+            <div className="flex-1 overflow-auto p-4 sm:p-6 bg-slate-950/95 flex justify-center items-start">
+              {/* HOJA CARTA FÍSICA */}
+              <div
+                id="official-template-preview-sheet"
+                className="bg-white shadow-2xl transition-transform origin-top text-slate-900 border border-slate-400/30"
+                style={{
+                  width: '816px',
+                  minHeight: '1056px',
+                  padding: '24px 28px',
+                  transform: `scale(${zoom})`,
+                  marginBottom: `${(1 - zoom) * -500}px`,
+                  fontFamily: activeGeneralFontCss,
+                }}
+              >
+                {/* 1. CABECERA NORMATIVA CON ALINEACIONES Y COLORES EN VIVO */}
+                <div
+                  className="mb-4 bg-white"
+                  style={{
+                    border: `${bWidth}px solid ${form.tableBorderColor}`,
+                  }}
+                >
+                  <div
+                    className="grid grid-cols-12 divide-x divide-y text-center"
+                    style={{ borderColor: form.tableBorderColor }}
+                  >
+                    {/* Logotipo */}
+                    <div className="col-span-3 p-2 flex flex-col items-center justify-center bg-white min-h-[60px]">
+                      {form.logoImageUrl ? (
+                        <img
+                          src={form.logoImageUrl}
+                          alt="Logo"
+                          style={{ maxHeight: `${form.logoHeight || 48}px` }}
+                          className="max-w-full object-contain mb-1"
+                        />
+                      ) : (
+                        <div className="text-[10px] font-mono text-slate-400 italic">[Espacio Logotipo]</div>
+                      )}
+                      {form.logoSubtitle && (
+                        <span
+                          className="font-bold uppercase tracking-wider text-center"
+                          style={{
+                            fontSize: `${form.fontSizeHeaderSubtitle}px`,
+                            color: form.subtitleTextColor,
+                          }}
+                        >
+                          {form.logoSubtitle}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Bloque de Título con Alineación Configurada */}
+                    <div
+                      className="col-span-6 p-2 flex flex-col justify-center"
+                      style={{
+                        backgroundColor: form.metadataBgColor,
+                        textAlign: form.alignReportTitle,
+                      }}
+                    >
+                      <span
+                        className="font-bold uppercase tracking-[0.2em]"
+                        style={{
+                          fontSize: `${form.fontSizeHeaderSubtitle}px`,
+                          color: form.subtitleTextColor,
+                          textAlign: form.alignHeaderSubtitle,
+                        }}
+                      >
+                        {form.headerSubtitle}
+                      </span>
+                      <h1
+                        className="font-black uppercase tracking-tight leading-tight my-0.5"
+                        style={{
+                          fontSize: `${form.fontSizeReportTitle}px`,
+                          color: form.titleTextColor,
+                          fontFamily: activeTitleFontCss,
+                          textAlign: form.alignReportTitle,
+                        }}
+                      >
+                        {form.reportTitle}
+                      </h1>
+                      <span
+                        className="font-medium italic"
+                        style={{
+                          fontSize: `${form.fontSizeProcedureRef}px`,
+                          color: form.procedureRefTextColor,
+                          textAlign: form.alignProcedureRef,
+                        }}
+                      >
+                        {form.procedureReference}
+                      </span>
+                    </div>
+
+                    {/* Metadatos */}
+                    <div
+                      className="col-span-3 text-[9px] font-mono grid grid-cols-2 divide-x divide-y"
+                      style={{
+                        backgroundColor: form.metadataBgColor,
+                        borderColor: form.tableBorderColor,
+                      }}
+                    >
+                      <div
+                        className="p-1 font-bold flex items-center"
+                        style={{
+                          backgroundColor: form.cellLabelBgColor,
+                          color: form.metadataLabelTextColor,
+                          fontSize: `${form.fontSizeMetadataLabels}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        CÓDIGO:
+                      </div>
+                      <div
+                        className="p-1 font-bold bg-white flex items-center justify-center"
+                        style={{
+                          color: form.metadataValueTextColor,
+                          fontSize: `${form.fontSizeMetadataValues}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        {form.documentCode}
+                      </div>
+
+                      <div
+                        className="p-1 font-bold flex items-center"
+                        style={{
+                          backgroundColor: form.cellLabelBgColor,
+                          color: form.metadataLabelTextColor,
+                          fontSize: `${form.fontSizeMetadataLabels}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        VERSIÓN:
+                      </div>
+                      <div
+                        className="p-1 font-bold bg-white flex items-center justify-center"
+                        style={{
+                          color: form.metadataValueTextColor,
+                          fontSize: `${form.fontSizeMetadataValues}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        {form.version}
+                      </div>
+
+                      <div
+                        className="p-1 font-bold flex items-center"
+                        style={{
+                          backgroundColor: form.cellLabelBgColor,
+                          color: form.metadataLabelTextColor,
+                          fontSize: `${form.fontSizeMetadataLabels}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        REVISIÓN:
+                      </div>
+                      <div
+                        className="p-1 bg-white flex items-center justify-center"
+                        style={{
+                          color: form.metadataValueTextColor,
+                          fontSize: `${form.fontSizeMetadataValues}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        {form.revisionDate}
+                      </div>
+
+                      <div
+                        className="p-1 font-bold flex items-center"
+                        style={{
+                          backgroundColor: form.cellLabelBgColor,
+                          color: form.metadataLabelTextColor,
+                          fontSize: `${form.fontSizeMetadataLabels}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        FOLIO / OT:
+                      </div>
+                      <div
+                        className="p-1 font-black text-white flex items-center justify-center"
+                        style={{
+                          backgroundColor: form.sectionHeaderBgColor,
+                          fontSize: `${form.fontSizeMetadataValues}px`,
+                          borderColor: form.tableBorderColor,
+                        }}
+                      >
+                        0001
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. SECCIÓN I: DATOS GENERALES DE INSPECCIÓN */}
+                <div className="mb-3.5">
+                  <div
+                    className="font-bold px-3 py-1.5 uppercase tracking-wider flex items-center justify-between"
+                    style={{
+                      backgroundColor: form.sectionHeaderBgColor,
+                      color: form.sectionHeaderTextColor,
+                      fontSize: `${form.fontSizeSectionTitles}px`,
+                      fontFamily: activeTitleFontCss,
+                      border: `${bWidth}px solid ${form.tableBorderColor}`,
+                      textAlign: form.alignSectionTitles,
+                    }}
+                  >
+                    <span>{form.section1Title}</span>
+                    <span className="text-[10px] font-mono opacity-80">{form.documentCode}</span>
+                  </div>
+
+                  <table
+                    className="w-full border-collapse text-xs"
+                    style={{ border: `${bWidth}px solid ${form.tableBorderColor}` }}
+                  >
+                    <tbody>
+                      <tr>
+                        <td
+                          className="font-bold border uppercase tracking-wider w-1/6"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Inspector:
+                        </td>
+                        <td
+                          className="border w-2/6 font-semibold"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            fontSize: `${form.fontSizeCellValues}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Insp. Bryan
+                        </td>
+                        <td
+                          className="font-bold border uppercase tracking-wider w-1/6"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Fecha Inspección:
+                        </td>
+                        <td
+                          className="border w-2/6"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            fontSize: `${form.fontSizeCellValues}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          2026-09-17
+                        </td>
+                      </tr>
+                      <tr>
+                        <td
+                          className="font-bold border uppercase tracking-wider"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Hora Inicio:
+                        </td>
+                        <td
+                          className="border font-mono"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            fontSize: `${form.fontSizeCellValues}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          08:00 a.m.
+                        </td>
+                        <td
+                          className="font-bold border uppercase tracking-wider"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Hora Término:
+                        </td>
+                        <td
+                          className="border font-mono"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            fontSize: `${form.fontSizeCellValues}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          11:21 a.m.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 3. SECCIÓN II: CONTROL DEL PRODUCTO Y COMBO DE ARMADO */}
+                <div className="mb-3.5">
+                  <div
+                    className="font-bold px-3 py-1.5 uppercase tracking-wider flex items-center justify-between"
+                    style={{
+                      backgroundColor: form.sectionHeaderBgColor,
+                      color: form.sectionHeaderTextColor,
+                      fontSize: `${form.fontSizeSectionTitles}px`,
+                      fontFamily: activeTitleFontCss,
+                      border: `${bWidth}px solid ${form.tableBorderColor}`,
+                      textAlign: form.alignSectionTitles,
+                    }}
+                  >
+                    <span>{form.section2Title}</span>
+                    <span className="text-[10px] font-mono opacity-80">ERP ORACLE SYNC</span>
+                  </div>
+
+                  <table
+                    className="w-full border-collapse text-xs"
+                    style={{ border: `${bWidth}px solid ${form.tableBorderColor}` }}
+                  >
+                    <tbody>
+                      <tr>
+                        <td
+                          className="font-bold border uppercase tracking-wider w-1/6"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Clave / SKU:
+                        </td>
+                        <td
+                          className="border w-2/6 font-mono font-black"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            fontSize: `${form.fontSizeCellValues}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          C0557-01
+                        </td>
+                        <td
+                          className="font-bold border uppercase tracking-wider w-1/6"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Lote Total (N):
+                        </td>
+                        <td
+                          className="border w-2/6 font-mono font-bold"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            fontSize: `${form.fontSizeCellValues}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          900 pzas
+                        </td>
+                      </tr>
+                      <tr>
+                        <td
+                          className="font-bold border uppercase tracking-wider"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Descripción:
+                        </td>
+                        <td
+                          colSpan={3}
+                          className="border font-bold uppercase"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            fontSize: `${form.fontSizeCellValues}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          JADE CHEF 10 PZAS MAS SET DE 5 CUCHILLOS TIPO MADERA
+                        </td>
+                      </tr>
+                      <tr>
+                        <td
+                          className="font-bold border uppercase tracking-wider"
+                          style={{
+                            backgroundColor: form.cellLabelBgColor,
+                            color: form.cellLabelTextColor,
+                            borderColor: form.tableBorderColor,
+                            fontSize: `${form.fontSizeCellLabels}px`,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          Componentes Combo:
+                        </td>
+                        <td
+                          colSpan={3}
+                          className="border text-[11px]"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            padding: `${padV}px ${padH}px`,
+                          }}
+                        >
+                          <div className="flex flex-wrap gap-2">
+                            <span className="bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[10px] font-mono">
+                              <strong>C0557-00:</strong> JADE CHEF 10 PZAS (1 pieza)
+                            </span>
+                            <span className="bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[10px] font-mono">
+                              <strong>C0558-00:</strong> SET DE 5 CUCHILLOS TIPO MADERA (1 pieza)
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 4. SECCIÓN III: MUESTREO DE ACEPTACIÓN (AQL) */}
+                <div className="mb-3.5">
+                  <div
+                    className="font-bold px-3 py-1.5 uppercase tracking-wider"
+                    style={{
+                      backgroundColor: form.sectionHeaderBgColor,
+                      color: form.sectionHeaderTextColor,
+                      fontSize: `${form.fontSizeSectionTitles}px`,
+                      fontFamily: activeTitleFontCss,
+                      border: `${bWidth}px solid ${form.tableBorderColor}`,
+                    }}
+                  >
+                    <span>{form.section3Title}</span>
+                  </div>
+
+                  <table
+                    className="w-full border-collapse text-xs text-center"
+                    style={{ border: `${bWidth}px solid ${form.tableBorderColor}` }}
+                  >
+                    <thead>
+                      <tr
+                        className="font-bold uppercase tracking-wider"
+                        style={{
+                          backgroundColor: form.cellLabelBgColor,
+                          color: form.cellLabelTextColor,
+                          fontSize: `${form.fontSizeTableHeaders}px`,
+                        }}
+                      >
+                        <th className="border p-1.5" style={{ borderColor: form.tableBorderColor }}>Nivel</th>
+                        <th className="border p-1.5" style={{ borderColor: form.tableBorderColor }}>AQL Target</th>
+                        <th className="border p-1.5" style={{ borderColor: form.tableBorderColor }}>Letra</th>
+                        <th className="border p-1.5" style={{ borderColor: form.tableBorderColor }}>Muestra Req. (n)</th>
+                        <th className="border p-1.5 bg-emerald-50 text-emerald-900" style={{ borderColor: form.tableBorderColor }}>Aceptación (Ac)</th>
+                        <th className="border p-1.5 bg-red-50 text-red-900" style={{ borderColor: form.tableBorderColor }}>Rechazo (Re)</th>
+                        <th className="border p-1.5 bg-amber-50" style={{ borderColor: form.tableBorderColor }}>Inspeccionada</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="font-semibold">
+                        <td className="border p-1.5" style={{ borderColor: form.tableBorderColor }}>General II</td>
+                        <td className="border p-1.5" style={{ borderColor: form.tableBorderColor }}>1.5%</td>
+                        <td className="border p-1.5 font-bold font-mono text-indigo-700" style={{ borderColor: form.tableBorderColor }}>J</td>
+                        <td className="border p-1.5 font-mono font-bold" style={{ borderColor: form.tableBorderColor }}>80 pz</td>
+                        <td className="border p-1.5 font-mono font-bold text-emerald-800 bg-emerald-50/50" style={{ borderColor: form.tableBorderColor }}>≤ 3</td>
+                        <td className="border p-1.5 font-mono font-bold text-red-800 bg-red-50/50" style={{ borderColor: form.tableBorderColor }}>≥ 4</td>
+                        <td className="border p-1.5 font-mono font-black bg-amber-50/70" style={{ borderColor: form.tableBorderColor }}>80 pz</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 5. SECCIÓN IV: CLASIFICACIÓN DE DEFECTOS FÍSICOS Y FUNCIONALES (CON PADDING E INTERLINEADO MEJORADO) */}
+                <div className="mb-3.5">
+                  <div
+                    className="font-bold px-3 py-1.5 uppercase tracking-wider flex items-center justify-between"
+                    style={{
+                      backgroundColor: form.sectionHeaderBgColor,
+                      color: form.sectionHeaderTextColor,
+                      fontSize: `${form.fontSizeSectionTitles}px`,
+                      fontFamily: activeTitleFontCss,
+                      border: `${bWidth}px solid ${form.tableBorderColor}`,
+                    }}
+                  >
+                    <span>{form.section4Title}</span>
+                    <span className="text-[10px] text-amber-300 font-mono">
+                      CRÍTICOS: 1 | MAYORES: 2 | MENORES: 0
+                    </span>
+                  </div>
+
+                  <table
+                    className="w-full border-collapse text-xs"
+                    style={{ border: `${bWidth}px solid ${form.tableBorderColor}` }}
+                  >
+                    <thead>
+                      <tr
+                        className="font-bold uppercase tracking-wider"
+                        style={{
+                          backgroundColor: form.cellLabelBgColor,
+                          color: form.cellLabelTextColor,
+                          fontSize: `${form.fontSizeTableHeaders}px`,
+                        }}
+                      >
+                        <th className="border text-left w-1/5" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>Categoría</th>
+                        <th className="border text-left w-2/5" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>Criterio Evaluado</th>
+                        <th className="border text-center w-16" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>Severidad</th>
+                        <th className="border text-center w-12" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>Def</th>
+                        <th className="border text-center w-24" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>Resultado</th>
+                        <th className="border text-left" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>Observaciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: form.tableBorderColor }}>
+                      {/* Fila 1 */}
+                      <tr>
+                        <td
+                          className="border font-bold align-top bg-slate-50"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellLabelTextColor,
+                            padding: `${padV}px ${padH}px`,
+                            lineHeight: lineH,
+                          }}
+                        >
+                          Empaque y Cajas
+                        </td>
+                        <td
+                          className="border align-top"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            padding: `${padV}px ${padH}px`,
+                            lineHeight: lineH,
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          <div className="font-bold" style={{ fontSize: `${form.fontSizeCellValues}px` }}>
+                            Caja Máster / Empaque Primario sin Daños ni Humedad
+                          </div>
+                          <div className="text-[10px] text-slate-500 italic mt-0.5">
+                            Cajas sin aplastamientos, roturas, manchas o humedad que comprometan la protección del producto.
+                          </div>
+                        </td>
+                        <td className="border text-center align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          <span className="bg-amber-100 text-amber-900 font-bold px-1.5 py-0.5 rounded text-[9px]">Mayor</span>
+                        </td>
+                        <td className="border text-center font-bold font-mono text-red-600 align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          1
+                        </td>
+                        <td className="border text-center align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          <span className="text-red-700 font-black text-[10px]">✗ DESVIACIÓN</span>
+                        </td>
+                        <td className="border text-[10px] text-slate-600 align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px`, lineHeight: lineH }}>
+                          Cajas sin aplastamientos ni roturas.
+                        </td>
+                      </tr>
+
+                      {/* Fila 2 */}
+                      <tr>
+                        <td
+                          className="border font-bold align-top bg-slate-50"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellLabelTextColor,
+                            padding: `${padV}px ${padH}px`,
+                            lineHeight: lineH,
+                          }}
+                        >
+                          Etiquetado y Códigos
+                        </td>
+                        <td
+                          className="border align-top"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            padding: `${padV}px ${padH}px`,
+                            lineHeight: lineH,
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          <div className="font-bold" style={{ fontSize: `${form.fontSizeCellValues}px` }}>
+                            Código de Barras EAN / UPC Legible y Escaneable
+                          </div>
+                          <div className="text-[10px] text-slate-500 italic mt-0.5">
+                            Código de barras de la clave o kit correcto, sin borrones ni errores de lectura scanner.
+                          </div>
+                        </td>
+                        <td className="border text-center align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          <span className="bg-red-100 text-red-900 font-bold px-1.5 py-0.5 rounded text-[9px]">Crítico</span>
+                        </td>
+                        <td className="border text-center font-bold font-mono text-red-600 align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          1
+                        </td>
+                        <td className="border text-center align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          <span className="text-red-700 font-black text-[10px]">✗ DESVIACIÓN</span>
+                        </td>
+                        <td className="border text-[10px] text-slate-600 align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px`, lineHeight: lineH }}>
+                          Código de barras con borrón leve.
+                        </td>
+                      </tr>
+
+                      {/* Fila 3 Conforme */}
+                      <tr>
+                        <td
+                          className="border font-bold align-top bg-slate-50"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellLabelTextColor,
+                            padding: `${padV}px ${padH}px`,
+                            lineHeight: lineH,
+                          }}
+                        >
+                          Armado y Componentes
+                        </td>
+                        <td
+                          className="border align-top"
+                          style={{
+                            borderColor: form.tableBorderColor,
+                            color: form.cellValueTextColor,
+                            padding: `${padV}px ${padH}px`,
+                            lineHeight: lineH,
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          <div className="font-bold" style={{ fontSize: `${form.fontSizeCellValues}px` }}>
+                            Integridad del Combo (Componentes y Claves Base Correctas)
+                          </div>
+                          <div className="text-[10px] text-slate-500 italic mt-0.5">
+                            Comprobar que no falten sartenes, tapas, mangos, cuchillos, accesorios ni instructivos del combo.
+                          </div>
+                        </td>
+                        <td className="border text-center align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          <span className="bg-red-100 text-red-900 font-bold px-1.5 py-0.5 rounded text-[9px]">Crítico</span>
+                        </td>
+                        <td className="border text-center font-bold font-mono text-slate-700 align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          0
+                        </td>
+                        <td className="border text-center align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px` }}>
+                          <span className="text-emerald-700 font-bold text-[10px]">✓ CONFORME</span>
+                        </td>
+                        <td className="border text-[10px] text-slate-600 align-top" style={{ borderColor: form.tableBorderColor, padding: `${padV}px ${padH}px`, lineHeight: lineH }}>
+                          Conforme / Sin hallazgos
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 6. SECCIÓN VI: DICTAMEN FINAL Y DISPOSICIÓN */}
+                <div className="mb-3.5">
+                  <div
+                    className="font-bold px-3 py-1.5 uppercase tracking-wider flex items-center justify-between"
+                    style={{
+                      backgroundColor: form.sectionHeaderBgColor,
+                      color: form.sectionHeaderTextColor,
+                      fontSize: `${form.fontSizeSectionTitles}px`,
+                      fontFamily: activeTitleFontCss,
+                      border: `${bWidth}px solid ${form.tableBorderColor}`,
+                    }}
+                  >
+                    <span>{form.section6Title}</span>
+                  </div>
+
+                  <div
+                    className="p-2.5 border space-y-2 bg-white"
+                    style={{ border: `${bWidth}px solid ${form.tableBorderColor}` }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-xs">DICTAMEN:</span>
+                        <span className="bg-red-600 text-white font-black text-xs px-3 py-1 rounded shadow">
+                          RECHAZADO
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          [ ] APROBADO &nbsp; [X] RECHAZADO &nbsp; [ ] CONDICIONADO
+                        </span>
+                      </div>
+                      <div className="font-bold text-[11px] bg-red-100 text-red-900 px-2 py-0.5 border border-red-300">
+                        ETIQUETA: ROJA
+                      </div>
+                    </div>
+
+                    <div className="border border-slate-200 rounded p-1.5 text-[10px] text-slate-500">
+                      <strong>OBSERVACIONES TÉCNICAS:</strong> Se detectaron desviaciones en empaque y código de barras. Requiere retrabajo y re-inspección.
+                    </div>
+                  </div>
+                </div>
+
+                {/* 7. SECCIÓN VII: FIRMAS DE CONFORMIDAD Y APROBACIÓN */}
+                <div>
+                  <div
+                    className="font-bold px-3 py-1.5 uppercase tracking-wider"
+                    style={{
+                      backgroundColor: form.sectionHeaderBgColor,
+                      color: form.sectionHeaderTextColor,
+                      fontSize: `${form.fontSizeSectionTitles}px`,
+                      fontFamily: activeTitleFontCss,
+                      border: `${bWidth}px solid ${form.tableBorderColor}`,
+                    }}
+                  >
+                    <span>{form.section7Title}</span>
+                  </div>
+
+                  <div
+                    className="grid grid-cols-2 divide-x border bg-white"
+                    style={{ border: `${bWidth}px solid ${form.tableBorderColor}`, borderColor: form.tableBorderColor }}
+                  >
+                    <div className="p-3 text-center flex flex-col justify-between h-24">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase">1. Inspección y Liberación de Calidad</span>
+                      <div className="font-serif italic text-lg text-slate-800 font-black">Insp. Bryan</div>
+                      <span className="text-[9px] text-slate-400">Firma Digital Registrada</span>
+                    </div>
+
+                    <div className="p-3 text-center flex flex-col justify-between h-24" style={{ borderColor: form.tableBorderColor }}>
+                      <span className="text-[10px] font-bold text-slate-600 uppercase">2. Conformidad y Aprobación de Maquila</span>
+                      <div className="font-serif italic text-lg text-slate-800 font-black">Supervisor de Maquila</div>
+                      <span className="text-[9px] text-slate-400">Firma Digital Registrada</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pie de página normativo */}
+                <div className="mt-4 pt-2 border-t border-slate-300 flex justify-between text-[9px] text-slate-500 font-mono">
+                  <span>{form.documentCode}, v{form.version}. Documento normativo Suave y Fácil S.A. de C.V.</span>
+                  <span>Página 1 de 1 (Carta 8.5" x 11")</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Ventana Modal de Confirmación de Borrado / Restablecimiento */}
       <ConfirmDeleteModal
         isOpen={confirmModal.isOpen}
-        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
-        onConfirm={confirmModal.onConfirm}
         title={confirmModal.title}
-        itemName={confirmModal.itemName}
         itemType={confirmModal.itemType}
+        itemName={confirmModal.itemName}
         message={confirmModal.message}
         confirmText={confirmModal.confirmText}
+        onConfirm={confirmModal.onConfirm}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
       />
     </div>
   );

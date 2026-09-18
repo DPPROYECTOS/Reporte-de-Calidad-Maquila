@@ -272,31 +272,59 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     { number: 4, label: '4. Dictamen', sublabel: 'Firmar', icon: PenTool, desc: 'Resultado y firma' },
   ];
 
-  // Helper tips orientados a supervisores paso a paso
-  const stepGuides: Record<number, { tag: string; title: string; instruction: string; color: string }> = {
+  // Helper tips orientados a supervisores paso a paso (Alta legibilidad y contraste WCAG AAA)
+  const stepGuides: Record<
+    number,
+    {
+      tag: string;
+      title: string;
+      instruction: string;
+      bg: string;
+      border: string;
+      tagBadge: string;
+      titleColor: string;
+      textColor: string;
+    }
+  > = {
     1: {
       tag: 'PASO 1 DE 4',
       title: 'Configura la Orden y el Producto',
       instruction: 'Selecciona el producto o combo y tu nombre. El sistema calculará automáticamente cuántas piezas debes revisar.',
-      color: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+      bg: 'bg-amber-50/90',
+      border: 'border-amber-300',
+      tagBadge: 'bg-amber-100 text-amber-950 border-amber-300',
+      titleColor: 'text-amber-950',
+      textColor: 'text-neutral-800',
     },
     2: {
       tag: 'PASO 2 DE 4',
       title: 'Revisa las Piezas Físicas',
       instruction: 'Toma la cantidad de piezas de la muestra. Si encuentras algún defecto o daño, tócalo para sumarlo.',
-      color: 'text-sky-400 border-sky-500/30 bg-sky-500/10',
+      bg: 'bg-sky-50/90',
+      border: 'border-sky-300',
+      tagBadge: 'bg-sky-100 text-sky-950 border-sky-300',
+      titleColor: 'text-sky-950',
+      textColor: 'text-neutral-800',
     },
     3: {
       tag: 'PASO 3 DE 4',
       title: 'Toma las 4 Fotos Obligatorias',
       instruction: 'Captura las 4 evidencias requeridas (inicial, armado, muestra y tarima) para desbloquear la firma.',
-      color: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
+      bg: 'bg-purple-50/90',
+      border: 'border-purple-300',
+      tagBadge: 'bg-purple-100 text-purple-950 border-purple-300',
+      titleColor: 'text-purple-950',
+      textColor: 'text-neutral-800',
     },
     4: {
       tag: 'PASO 4 DE 4',
       title: 'Revisa el Dictamen y Firma',
       instruction: 'El sistema calcula en automático si el lote se APRUEBA o RECHAZA según la norma AQL. Firma con el dedo.',
-      color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
+      bg: 'bg-emerald-50/90',
+      border: 'border-emerald-300',
+      tagBadge: 'bg-emerald-100 text-emerald-950 border-emerald-300',
+      titleColor: 'text-emerald-950',
+      textColor: 'text-neutral-800',
     },
   };
 
@@ -630,22 +658,22 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
           </div>
         )}
 
-        {/* Tarjeta Guía del Paso Actual (Con scroll natural, sin tapar la pantalla fija) */}
-        <div className={`mb-3.5 px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-2xl border flex items-start space-x-2.5 text-left shadow-xs transition-all ${currentGuide.color}`}>
+        {/* Tarjeta Guía del Paso Actual (Alta legibilidad y contraste en cualquier pantalla) */}
+        <div className={`mb-3.5 px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-2xl border-2 flex items-start space-x-2.5 text-left shadow-xs transition-all ${currentGuide.bg} ${currentGuide.border}`}>
           <span className="text-base sm:text-lg shrink-0 select-none mt-0.5">
             {currentStep === 1 ? '📋' : currentStep === 2 ? '🔍' : currentStep === 3 ? '📸' : '✍️'}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center space-x-1.5 flex-wrap">
-              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider opacity-90">
+            <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+              <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border shadow-2xs ${currentGuide.tagBadge}`}>
                 {currentGuide.tag}
               </span>
-              <span className="text-[9px] opacity-60">•</span>
-              <span className="text-[11px] sm:text-xs font-bold text-white break-words">
+              <span className="text-[10px] text-neutral-400 font-bold select-none">•</span>
+              <span className={`text-[12px] sm:text-sm font-black tracking-tight break-words ${currentGuide.titleColor}`}>
                 {currentGuide.title}
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-200 mt-0.5 leading-snug">
+            <p className={`text-[11px] sm:text-xs mt-1 leading-snug font-medium ${currentGuide.textColor}`}>
               {currentGuide.instruction}
             </p>
           </div>

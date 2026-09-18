@@ -30,6 +30,21 @@ import {
 import { PRODUCT_CATALOG } from '../data/productCatalog';
 import { SheetTemplateConfig, DEFAULT_TEMPLATE_CONFIG } from '../types/templateConfig';
 import { getStoredInspectors } from '../utils/appConfigStore';
+import { getTitleFontCss, getGeneralFontCss } from '../utils/templateFontUtils';
+
+function formatDisplayDate(dateStr?: string): string {
+  if (!dateStr || dateStr === 'Pendiente') return 'Pendiente';
+  try {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+  } catch {}
+  return dateStr.split('T')[0] || dateStr;
+}
 
 interface ExcelGridReportProps {
   report: QualityReport;
@@ -68,27 +83,8 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
 }) => {
   const cfg = templateConfig || DEFAULT_TEMPLATE_CONFIG;
 
-  // Font family helper
-  const getFontFamily = (family?: string) => {
-    switch (family) {
-      case 'serif':
-        return 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif';
-      case 'georgia':
-        return 'Georgia, Cambria, "Times New Roman", Times, serif';
-      case 'mono':
-        return 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-      case 'arial':
-        return 'Arial, "Helvetica Neue", Helvetica, sans-serif';
-      case 'trebuchet':
-        return '"Trebuchet MS", "Lucida Sans Unicode", Arial, sans-serif';
-      case 'sans':
-      default:
-        return 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-    }
-  };
-
-  const docFontFamily = getFontFamily(cfg.fontFamilyGeneral);
-  const titleFontFamily = getFontFamily(cfg.fontFamilyTitles || 'serif');
+  const docFontFamily = getGeneralFontCss(cfg.fontFamilyGeneral);
+  const titleFontFamily = getTitleFontCss(cfg.fontFamilyTitles || 'serif');
 
   // Resolved Colors
   const sHeaderBg = cfg.sectionHeaderBgColor || cfg.headerBgColor || '#1A1A1A';
@@ -118,6 +114,19 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
   const szTableHeaders = cfg.fontSizeTableHeaders || 10;
   const szFooterNote = cfg.fontSizeFooterNote || 9;
   const logoHeight = cfg.logoHeight || 48;
+
+  // Resolved Alignments
+  const alignRepTitle = cfg.alignReportTitle || 'center';
+  const alignHdrSubtitle = cfg.alignHeaderSubtitle || 'center';
+  const alignProcRef = cfg.alignProcedureRef || 'center';
+  const alignSecTitles = cfg.alignSectionTitles || 'left';
+  const alignTblHeaders = cfg.alignTableHeaders || 'center';
+
+  // Resolved Spacing, Padding & Anti-Clipping
+  const padV = cfg.cellPaddingVertical !== undefined ? cfg.cellPaddingVertical : 6;
+  const padH = cfg.cellPaddingHorizontal !== undefined ? cfg.cellPaddingHorizontal : 8;
+  const lineH = cfg.lineHeightMultiplier !== undefined ? cfg.lineHeightMultiplier : 1.4;
+  const bWidth = cfg.tableBorderWidth !== undefined ? cfg.tableBorderWidth : 2;
 
   // Lista dinámica de inspectores desde Supabase / Store
   const [inspectorsList, setInspectorsList] = useState<string[]>(() => getStoredInspectors());
@@ -265,6 +274,7 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
 
   const isApproved = report.status === 'APROBADO';
   const isRejected = report.status === 'RECHAZADO';
+  const [showSection5Photos, setShowSection5Photos] = useState<boolean>(false);
 
   // Zoom state for zooming in/out on the report view
   const [internalZoomLevel, setInternalZoomLevel] = useState<number>(1.0);
@@ -474,10 +484,20 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
             </div>
 
             {/* Title Block */}
-            <div className="col-span-6 p-3 flex flex-col justify-center text-center" style={{ backgroundColor: metaBg }}>
+            <div
+              className="col-span-6 p-3 flex flex-col justify-center"
+              style={{
+                backgroundColor: metaBg,
+                textAlign: alignRepTitle,
+              }}
+            >
               <span
                 className="font-bold uppercase tracking-[0.2em]"
-                style={{ fontSize: `${szHeaderSubtitle}px`, color: subtitleText }}
+                style={{
+                  fontSize: `${szHeaderSubtitle}px`,
+                  color: subtitleText,
+                  textAlign: alignHdrSubtitle,
+                }}
               >
                 {cfg.headerSubtitle}
               </span>
@@ -487,6 +507,7 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
                   fontSize: `${szReportTitle}px`,
                   color: titleText,
                   fontFamily: titleFontFamily,
+                  textAlign: alignRepTitle,
                 }}
               >
                 {cfg.reportTitle}
@@ -496,6 +517,7 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
                 style={{
                   fontSize: `${szProcedureRef}px`,
                   color: procRefText,
+                  textAlign: alignProcRef,
                 }}
               >
                 {cfg.procedureReference}
@@ -608,7 +630,7 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
               fontSize: `${szSectionTitles}px`,
             }}
           >
-            <span className="italic font-normal">{cfg.section1Title}</span>
+            <span className="font-bold tracking-wide">{cfg.section1Title}</span>
             <span className="font-sans tracking-widest uppercase opacity-80" style={{ fontSize: `${Math.max(szSectionTitles - 4, 8)}px` }}>
               {cfg.documentCode}
             </span>
@@ -706,9 +728,9 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
               fontSize: `${szSectionTitles}px`,
             }}
           >
-            <span className="italic font-normal">{cfg.section2Title}</span>
+            <span className="font-bold tracking-wide">{cfg.section2Title}</span>
             <span className="font-sans tracking-widest uppercase opacity-80" style={{ fontSize: `${Math.max(szSectionTitles - 4, 8)}px` }}>
-              ERP Oracle Sync
+              ERP ORACLE SYNC
             </span>
           </div>
 
@@ -903,7 +925,7 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
            ========================================== */}
         <div className="mb-5">
           <div
-            className="font-bold px-3 py-1.5 uppercase tracking-[0.15em] border flex items-center justify-between"
+            className="font-bold px-3 py-1.5 uppercase tracking-wide border flex items-center justify-between"
             style={{
               backgroundColor: sHeaderBg,
               color: sHeaderText,
@@ -912,10 +934,10 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
               fontSize: `${szSectionTitles}px`,
             }}
           >
-            <span className="italic font-normal">{cfg.section3Title}</span>
+            <span className="font-bold tracking-wide">{cfg.section3Title}</span>
             <button
               onClick={onOpenAqlModal}
-              className="no-print bg-white text-[#1A1A1A] hover:bg-neutral-200 text-[10px] px-2.5 py-0.5 font-bold transition flex items-center space-x-1 uppercase tracking-wider"
+              className="no-print bg-white text-[#1A1A1A] hover:bg-neutral-200 text-[10px] px-2.5 py-0.5 font-bold transition flex items-center space-x-1 uppercase tracking-wider rounded-sm shadow-xs"
             >
               <Calculator className="w-3 h-3" />
               <span>Ver Tabla Anexo 8</span>
@@ -928,13 +950,13 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
               style={{ backgroundColor: tableSubHeaderBg, color: tableSubHeaderText, fontSize: `${szTableHeaders}px` }}
             >
               <tr>
-                <th className="p-1.5 border" style={{ borderColor: tableBorder }}>Nivel Inspección</th>
+                <th className="p-1.5 border" style={{ borderColor: tableBorder }}>Nivel</th>
                 <th className="p-1.5 border" style={{ borderColor: tableBorder }}>AQL Target</th>
-                <th className="p-1.5 border" style={{ borderColor: tableBorder }}>Letra Código</th>
-                <th className="p-1.5 border bg-neutral-200 text-[#1A1A1A]" style={{ borderColor: tableBorder }}>Muestra Requerida (n)</th>
-                <th className="p-1.5 border bg-emerald-100 text-emerald-900" style={{ borderColor: tableBorder }}>Aceptación (Ac)</th>
-                <th className="p-1.5 border bg-red-100 text-red-900" style={{ borderColor: tableBorder }}>Rechazo (Re)</th>
-                <th className="p-1.5 border bg-amber-100 text-amber-900" style={{ borderColor: tableBorder }}>Muestra Inspeccionada</th>
+                <th className="p-1.5 border" style={{ borderColor: tableBorder }}>Letra</th>
+                <th className="p-1.5 border bg-neutral-100" style={{ borderColor: tableBorder }}>Muestra Req. (n)</th>
+                <th className="p-1.5 border bg-emerald-50 text-emerald-900" style={{ borderColor: tableBorder }}>Aceptación (Ac)</th>
+                <th className="p-1.5 border bg-red-50 text-red-900" style={{ borderColor: tableBorder }}>Rechazo (Re)</th>
+                <th className="p-1.5 border bg-amber-100/70 text-amber-950" style={{ borderColor: tableBorder }}>Inspeccionada</th>
               </tr>
             </thead>
             <tbody>
@@ -976,7 +998,7 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
            ========================================== */}
         <div className="mb-6">
           <div
-            className="font-bold px-3.5 py-2 uppercase tracking-[0.15em] border flex items-center justify-between"
+            className="font-bold px-3 py-1.5 uppercase tracking-wide border flex items-center justify-between"
             style={{
               backgroundColor: sHeaderBg,
               color: sHeaderText,
@@ -985,24 +1007,27 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
               fontSize: `${szSectionTitles}px`,
             }}
           >
-            <span className="italic font-normal">{cfg.section4Title}</span>
-            <span className="text-[10px] text-amber-300 font-mono">
-              Totales: Críticos ({report.totalCritical}) | Mayores ({report.totalMajor}) | Menores ({report.totalMinor})
+            <span className="font-bold tracking-wide">{cfg.section4Title}</span>
+            <span className="text-[10px] text-[#FDE047] font-mono font-bold tracking-wider">
+              CRÍTICOS: {report.totalCritical} | MAYORES: {report.totalMajor} | MENORES: {report.totalMinor}
             </span>
           </div>
 
-          <table className="w-full border-collapse border-2 text-xs" style={{ borderColor: tableBorder }}>
+          <table
+            className="w-full border-collapse text-xs"
+            style={{ border: `${bWidth}px solid ${tableBorder}`, borderColor: tableBorder }}
+          >
             <thead
               className="font-bold uppercase tracking-wider"
               style={{ backgroundColor: tableSubHeaderBg, color: tableSubHeaderText, fontSize: `${szTableHeaders}px` }}
             >
               <tr>
-                <th className="p-2 border text-left w-1/5" style={{ borderColor: tableBorder }}>Categoría</th>
-                <th className="p-2 border text-left w-2/5" style={{ borderColor: tableBorder }}>Criterio de Inspección</th>
-                <th className="p-2 border text-center w-20" style={{ borderColor: tableBorder }}>Severidad</th>
-                <th className="p-2 border text-center w-20 bg-amber-100 text-amber-950" style={{ borderColor: tableBorder }}>Defectos ($n$)</th>
-                <th className="p-2 border text-center w-24" style={{ borderColor: tableBorder }}>Estado</th>
-                <th className="p-2 border text-left" style={{ borderColor: tableBorder }}>Observaciones / Hallazgos (Escrito a Mano)</th>
+                <th className="border text-left w-1/5" style={{ borderColor: tableBorder, padding: `${padV}px ${padH}px`, textAlign: alignTblHeaders === 'center' ? 'center' : 'left' }}>Categoría</th>
+                <th className="border text-left w-2/5" style={{ borderColor: tableBorder, padding: `${padV}px ${padH}px`, textAlign: alignTblHeaders === 'center' ? 'center' : 'left' }}>Criterio Evaluado</th>
+                <th className="border text-center w-20" style={{ borderColor: tableBorder, padding: `${padV}px ${padH}px` }}>Severidad</th>
+                <th className="border text-center w-16 bg-amber-100/70 text-amber-950 font-bold" style={{ borderColor: tableBorder, padding: `${padV}px ${padH}px` }}>Def</th>
+                <th className="border text-center w-28" style={{ borderColor: tableBorder, padding: `${padV}px ${padH}px` }}>Resultado</th>
+                <th className="border text-left" style={{ borderColor: tableBorder, padding: `${padV}px ${padH}px`, textAlign: alignTblHeaders === 'center' ? 'center' : 'left' }}>Observaciones</th>
               </tr>
             </thead>
             <tbody className="divide-y" style={{ borderColor: tableBorder }}>
@@ -1014,20 +1039,44 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
                     className={hasDefect ? 'bg-red-50/70 font-semibold' : 'hover:bg-neutral-50'}
                   >
                     <td
-                      className="p-2.5 border font-bold text-neutral-800 bg-[#FAF9F6] text-[11px] align-top"
-                      style={{ borderColor: tableBorder, fontSize: `${szCellValues}px` }}
+                      className="border font-bold text-neutral-800 bg-[#FAF9F6] text-[11px] align-top"
+                      style={{
+                        borderColor: tableBorder,
+                        fontSize: `${szCellValues}px`,
+                        padding: `${padV}px ${padH}px`,
+                        lineHeight: lineH,
+                      }}
                     >
                       {item.category}
                     </td>
 
-                    <td className="p-2.5 border align-top" style={{ borderColor: tableBorder, color: cellValText }}>
+                    <td
+                      className="border align-top"
+                      style={{
+                        borderColor: tableBorder,
+                        color: cellValText,
+                        padding: `${padV}px ${padH}px`,
+                        lineHeight: lineH,
+                        overflowWrap: 'break-word',
+                        wordBreak: 'break-word',
+                      }}
+                    >
                       <div className="font-bold text-xs" style={{ fontSize: `${szCellValues}px` }}>{item.name}</div>
-                      <div className="text-[10px] text-neutral-600 font-normal leading-normal italic mt-0.5">
+                      <div
+                        className="text-[10px] text-neutral-600 font-normal italic mt-1 pb-1"
+                        style={{ lineHeight: lineH }}
+                      >
                         {item.description}
                       </div>
                     </td>
 
-                    <td className="p-2.5 border text-center font-bold align-top" style={{ borderColor: tableBorder }}>
+                    <td
+                      className="border text-center font-bold align-top"
+                      style={{
+                        borderColor: tableBorder,
+                        padding: `${padV}px ${padH}px`,
+                      }}
+                    >
                       <span
                         className={`text-[9px] px-2 py-1 uppercase tracking-wider font-mono border inline-block ${
                           item.severity === 'Critico'
@@ -1041,7 +1090,13 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
                       </span>
                     </td>
 
-                    <td className="p-2.5 border text-center font-mono font-bold bg-amber-50/50 align-top" style={{ borderColor: tableBorder }}>
+                    <td
+                      className="border text-center font-mono font-bold bg-amber-50/50 align-top"
+                      style={{
+                        borderColor: tableBorder,
+                        padding: `${padV}px ${padH}px`,
+                      }}
+                    >
                       <input
                         type="number"
                         min={0}
@@ -1054,31 +1109,40 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
                       />
                     </td>
 
-                    <td className="p-2.5 border text-center font-bold align-top" style={{ borderColor: tableBorder }}>
+                    <td
+                      className="border text-center font-bold align-top"
+                      style={{
+                        borderColor: tableBorder,
+                        padding: `${padV}px ${padH}px`,
+                      }}
+                    >
                       <div className="flex flex-col items-center space-y-1">
                         {item.passed ? (
-                          <span className="text-emerald-800 font-black text-[11px]">
-                            ✓ CUMPLE
+                          <span className="text-emerald-700 font-black text-[11px] tracking-wide">
+                            ✓ CONFORME
                           </span>
                         ) : (
-                          <span className="text-red-700 font-black text-[11px]">
+                          <span className="text-red-700 font-black text-[11px] tracking-wide">
                             ✗ DESVIACIÓN
                           </span>
                         )}
-                        <span className="text-[9px] text-neutral-500 font-mono hidden print:inline-block">
-                          [ ] Ok  [ ] Def
-                        </span>
                       </div>
                     </td>
 
-                    <td className="p-2 border align-top bg-white" style={{ borderColor: tableBorder }}>
+                    <td
+                      className="border align-top bg-white"
+                      style={{
+                        borderColor: tableBorder,
+                        padding: `${padV}px ${padH}px`,
+                      }}
+                    >
                       <div className="min-h-[38px] flex items-center">
                         <input
                           type="text"
                           value={item.description || ''}
                           onChange={(e) => handleDefectDescriptionChange(item.id, e.target.value)}
                           placeholder={hasDefect ? 'Escriba el detalle del hallazgo...' : 'Sin hallazgos / Conforme'}
-                          style={{ color: cellValText, fontSize: `${szCellValues}px` }}
+                          style={{ color: cellValText, fontSize: `${szCellValues}px`, lineHeight: lineH }}
                           className="w-full bg-transparent px-1.5 py-1 focus:outline-emerald-600 border-b border-dashed border-neutral-300 print:border-b print:border-solid print:border-neutral-400 font-sans"
                         />
                       </div>
@@ -1091,11 +1155,12 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
         </div>
 
         {/* ==========================================
-            SECCIÓN V: EVIDENCIA FOTOGRÁFICA Y ARCHIVOS .ZIP
+            SECCIÓN V: EVIDENCIA FOTOGRÁFICA Y ARCHIVOS .ZIP (OPCIONAL / ANEXO)
            ========================================== */}
-        <div className="mb-6">
+        <div className="mb-4 no-print">
           <div
-            className="font-bold px-3.5 py-2 uppercase tracking-[0.15em] border flex items-center justify-between"
+            className="font-bold px-3 py-1.5 uppercase tracking-wide border flex items-center justify-between cursor-pointer select-none"
+            onClick={() => setShowSection5Photos((prev) => !prev)}
             style={{
               backgroundColor: sHeaderBg,
               color: sHeaderText,
@@ -1104,353 +1169,264 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
               fontSize: `${szSectionTitles}px`,
             }}
           >
-            <span className="italic font-normal">{cfg.section5Title}</span>
-            <button
-              onClick={onOpenPhotosModal}
-              className="no-print bg-white text-[#1A1A1A] hover:bg-neutral-200 text-[10px] px-3 py-1 font-bold transition flex items-center space-x-1.5 uppercase tracking-wider border"
-              style={{ borderColor: tableBorder }}
-            >
-              <Camera className="w-3.5 h-3.5 text-amber-700" />
-              <span>Gestionar Evidencias / Archivo .ZIP</span>
-            </button>
-          </div>
-
-          <div className="p-3 border-2 bg-[#FAF9F6] space-y-3" style={{ borderColor: tableBorder }}>
-            {/* Attached ZIP Banner status in report */}
-            {report.zipAttachment && (
-              <div className="bg-white border p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-mono" style={{ borderColor: tableBorder }}>
-                <div className="flex items-center space-x-2">
-                  <Archive className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>
-                    <strong>PAQUETE ZIP DE EVIDENCIAS:</strong> {report.zipAttachment.filename} ({(report.zipAttachment.sizeBytes / 1024).toFixed(1)} KB)
-                  </span>
-                </div>
-                <span className="text-neutral-600 text-[10px] bg-emerald-50 px-2 py-0.5 border border-emerald-300 font-bold">
-                  {report.zipAttachment.filesCount} fotos adjuntas • {report.zipAttachment.uploadedAt}
-                </span>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
-              {/* Foto 1 */}
-              <div
-                className={`p-3 border text-center transition min-h-[75px] flex flex-col justify-between ${
-                  report.photoInitial.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'
-                }`}
+            <span className="font-bold tracking-wide">{cfg.section5Title} {showSection5Photos ? '(Visible)' : '(Oculto en Hoja Carta)'}</span>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenPhotosModal();
+                }}
+                className="bg-white text-[#1A1A1A] hover:bg-neutral-200 text-[10px] px-2.5 py-0.5 font-bold transition flex items-center space-x-1.5 uppercase tracking-wider rounded-sm"
               >
-                <div>
-                  <div className="font-bold uppercase tracking-wider text-[9px]" style={{ color: cellValText }}>1. Inicio Almacén</div>
-                  <div className="text-[9px] text-neutral-500 mt-0.5 italic">Recepción insumos</div>
-                </div>
-                <div className="mt-2 font-bold text-xs">
-                  {report.photoInitial.captured || (report.photoInitial.urls && report.photoInitial.urls.length > 0) ? (
-                    <span className="text-emerald-800 font-mono">
-                      ✓ {report.photoInitial.urls?.length ? `${report.photoInitial.urls.length} foto(s)` : 'Capturada'}
-                    </span>
-                  ) : (
-                    <span className="text-amber-700 font-mono">⚠️ Pendiente</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Foto 2 */}
-              <div
-                className={`p-3 border text-center transition min-h-[75px] flex flex-col justify-between ${
-                  report.photoProcess.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'
-                }`}
-              >
-                <div>
-                  <div className="font-bold uppercase tracking-wider text-[9px]" style={{ color: cellValText }}>2. Proceso Módulo</div>
-                  <div className="text-[9px] text-neutral-500 mt-0.5 italic">Ejecución armado</div>
-                </div>
-                <div className="mt-2 font-bold text-xs">
-                  {report.photoProcess.captured || (report.photoProcess.urls && report.photoProcess.urls.length > 0) ? (
-                    <span className="text-emerald-800 font-mono">
-                      ✓ {report.photoProcess.urls?.length ? `${report.photoProcess.urls.length} foto(s)` : 'Capturada'}
-                    </span>
-                  ) : (
-                    <span className="text-amber-700 font-mono">⚠️ Pendiente</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Foto 3 */}
-              <div
-                className={`p-3 border text-center transition min-h-[75px] flex flex-col justify-between ${
-                  report.photoReleasedPiece.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'
-                }`}
-              >
-                <div>
-                  <div className="font-bold uppercase tracking-wider text-[9px]" style={{ color: cellValText }}>3. Pieza Liberada</div>
-                  <div className="text-[9px] text-neutral-500 mt-0.5 italic">Detalle calidad</div>
-                </div>
-                <div className="mt-2 font-bold text-xs">
-                  {report.photoReleasedPiece.captured || (report.photoReleasedPiece.urls && report.photoReleasedPiece.urls.length > 0) ? (
-                    <span className="text-emerald-800 font-mono">
-                      ✓ {report.photoReleasedPiece.urls?.length ? `${report.photoReleasedPiece.urls.length} foto(s)` : 'Capturada'}
-                    </span>
-                  ) : (
-                    <span className="text-amber-700 font-mono">⚠️ Pendiente</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Foto 4 */}
-              <div
-                className={`p-3 border text-center transition min-h-[75px] flex flex-col justify-between ${
-                  report.photoPalletized.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'
-                }`}
-              >
-                <div>
-                  <div className="font-bold uppercase tracking-wider text-[9px]" style={{ color: cellValText }}>4. PT Entarimado</div>
-                  <div className="text-[9px] text-neutral-500 mt-0.5 italic">CVD-AMA-F-03</div>
-                </div>
-                <div className="mt-2 font-bold text-xs">
-                  {report.photoPalletized.captured || (report.photoPalletized.urls && report.photoPalletized.urls.length > 0) ? (
-                    <span className="text-emerald-800 font-mono">
-                      ✓ {report.photoPalletized.urls?.length ? `${report.photoPalletized.urls.length} foto(s)` : 'Capturada'}
-                    </span>
-                  ) : (
-                    <span className="text-amber-700 font-mono">⚠️ Pendiente</span>
-                  )}
-                </div>
-              </div>
+                <Camera className="w-3 h-3 text-amber-700" />
+                <span>Gestionar Fotos (.ZIP)</span>
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* ==========================================
-            SECCIÓN VI: DICTAMEN Y PLAN DE ACCIÓN (LÍNEAS DE ESCRITURA Y CHECKBOXES A MANO)
-           ========================================== */}
-        <div className="mb-6">
-          <div
-            className="font-bold px-3.5 py-2 uppercase tracking-[0.15em] border flex items-center justify-between"
-            style={{
-              backgroundColor: sHeaderBg,
-              color: sHeaderText,
-              borderColor: tableBorder,
-              fontFamily: titleFontFamily,
-              fontSize: `${szSectionTitles}px`,
-            }}
-          >
-            <span className="italic font-normal">{cfg.section6Title}</span>
-          </div>
-
-          <div className="border-2 p-4 bg-white space-y-4" style={{ borderColor: tableBorder }}>
-            {/* Disposition Status Badge Row with Printable Checkboxes */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3 border bg-[#FAF9F6]" style={{ borderColor: tableBorder }}>
-              <div className="flex flex-wrap items-center gap-4">
-                <span className="font-bold uppercase text-[10px] tracking-widest" style={{ color: cellValText }}>Dictamen Estatus:</span>
-                <span
-                  className={`px-4 py-1.5 text-xs font-black tracking-widest uppercase flex items-center space-x-1.5 ${
-                    isApproved
-                      ? 'bg-[#1A1A1A] text-white'
-                      : isRejected
-                      ? 'bg-red-700 text-white'
-                      : 'bg-amber-400 text-black'
-                  }`}
-                >
-                  {isApproved && <CheckCircle2 className="w-4 h-4" />}
-                  {isRejected && <XCircle className="w-4 h-4" />}
-                  <span>{report.status}</span>
-                </span>
-
-                {/* Print manual checkboxes */}
-                <div className="flex items-center space-x-3 text-xs font-mono border-l border-neutral-300 pl-4">
-                  <span className="font-bold text-neutral-800 text-[10px]">Llenado a mano:</span>
-                  <span>[{isApproved ? 'X' : ' '}] APROBADO</span>
-                  <span>[{isRejected ? 'X' : ' '}] RECHAZADO</span>
-                  <span>[{report.status === 'CONDICIONADO' ? 'X' : ' '}] CONDICIONADO</span>
-                </div>
-              </div>
-
-              {/* Tag & Quarantine Rules */}
-              <div className="flex items-center space-x-3 text-xs font-semibold">
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-neutral-500 uppercase text-[10px]">Etiqueta:</span>
-                  <span
-                    className={`px-2.5 py-1 text-[10px] font-black border uppercase tracking-wider ${
-                      report.tagColor === 'Verde'
-                        ? 'bg-emerald-100 text-emerald-900 border-emerald-400'
-                        : report.tagColor === 'Roja'
-                        ? 'bg-red-100 text-red-900 border-red-400'
-                        : 'bg-amber-100 text-amber-900 border-amber-400'
-                    }`}
-                  >
-                    Etiqueta {report.tagColor}
-                  </span>
-                </div>
-
-                {isRejected && (
-                  <div className="flex items-center space-x-1 text-red-800 bg-red-50 border border-red-300 px-2 py-1 font-bold text-[10px] uppercase tracking-wider">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>Cuarentena (&lt;40 min SLA)</span>
+          {showSection5Photos && (
+            <div className="p-3 border-2 border-t-0 bg-[#FAF9F6] space-y-3" style={{ borderColor: tableBorder }}>
+              {/* Attached ZIP Banner status in report */}
+              {report.zipAttachment && (
+                <div className="bg-white border p-2 flex flex-wrap items-center justify-between gap-2 text-xs font-mono" style={{ borderColor: tableBorder }}>
+                  <div className="flex items-center space-x-2">
+                    <Archive className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>
+                      <strong>PAQUETE ZIP DE EVIDENCIAS:</strong> {report.zipAttachment.filename} ({(report.zipAttachment.sizeBytes / 1024).toFixed(1)} KB)
+                    </span>
                   </div>
-                )}
+                  <span className="text-neutral-600 text-[10px] bg-emerald-50 px-2 py-0.5 border border-emerald-300 font-bold">
+                    {report.zipAttachment.filesCount} fotos adjuntas
+                  </span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
+                <div className={`p-2 border text-center transition min-h-[60px] flex flex-col justify-between ${report.photoInitial.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'}`}>
+                  <div className="font-bold uppercase text-[9px]">1. Inicio Almacén</div>
+                  <div className="text-xs font-bold text-emerald-800">{report.photoInitial.captured ? '✓ Capturada' : '⚠️ Pendiente'}</div>
+                </div>
+                <div className={`p-2 border text-center transition min-h-[60px] flex flex-col justify-between ${report.photoProcess.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'}`}>
+                  <div className="font-bold uppercase text-[9px]">2. Proceso Módulo</div>
+                  <div className="text-xs font-bold text-emerald-800">{report.photoProcess.captured ? '✓ Capturada' : '⚠️ Pendiente'}</div>
+                </div>
+                <div className={`p-2 border text-center transition min-h-[60px] flex flex-col justify-between ${report.photoReleasedPiece.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'}`}>
+                  <div className="font-bold uppercase text-[9px]">3. Pieza Liberada</div>
+                  <div className="text-xs font-bold text-emerald-800">{report.photoReleasedPiece.captured ? '✓ Capturada' : '⚠️ Pendiente'}</div>
+                </div>
+                <div className={`p-2 border text-center transition min-h-[60px] flex flex-col justify-between ${report.photoPalletized.captured ? 'bg-emerald-50 border-emerald-600' : 'bg-white border-neutral-300'}`}>
+                  <div className="font-bold uppercase text-[9px]">4. PT Entarimado</div>
+                  <div className="text-xs font-bold text-emerald-800">{report.photoPalletized.captured ? '✓ Capturada' : '⚠️ Pendiente'}</div>
+                </div>
               </div>
             </div>
-
-            {/* Observaciones técnicas con líneas para escritura a mano */}
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-neutral-700 mb-1 flex justify-between">
-                <span>Observaciones Técnicas de Calidad (Para redacción manual o digital):</span>
-                <span className="text-neutral-400 text-[9px] font-mono">Espacio de 3 líneas regladas</span>
-              </label>
-              <textarea
-                value={report.observaciones}
-                onChange={(e) => handleChange('observaciones', e.target.value)}
-                rows={3}
-                style={{ borderColor: tableBorder, color: cellValText, fontSize: `${szCellValues}px` }}
-                className="w-full bg-[#FAF9F6] border-2 p-3 focus:outline-emerald-600 font-sans leading-relaxed min-h-[90px] bg-[linear-gradient(transparent_27px,#e5e7eb_28px)] bg-[length:100%_28px]"
-                placeholder="Escriba las observaciones técnicas de dictaminación..."
-              />
-            </div>
-
-            {/* Plan de Acción con líneas para escritura a mano */}
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-neutral-700 mb-1 flex justify-between">
-                <span>Plan de Acción y Medidas Correctivas:</span>
-                <span className="text-neutral-400 text-[9px] font-mono">Espacio de 3 líneas regladas</span>
-              </label>
-              <textarea
-                value={report.planDeAccion}
-                onChange={(e) => handleChange('planDeAccion', e.target.value)}
-                rows={3}
-                style={{ borderColor: tableBorder, color: cellValText, fontSize: `${szCellValues}px` }}
-                className="w-full bg-[#FAF9F6] border-2 p-3 focus:outline-emerald-600 font-sans leading-relaxed min-h-[90px] bg-[linear-gradient(transparent_27px,#e5e7eb_28px)] bg-[length:100%_28px]"
-                placeholder="Escriba el plan de acción, correcciones o aislamiento..."
-              />
-            </div>
-          </div>
+          )}
         </div>
 
         {/* ==========================================
-            SECCIÓN VII: FIRMAS DE CONFORMIDAD Y APROBACIÓN OPERATIVA (CALIDAD Y MAQUILA)
+            SECCIÓN VI: DICTAMEN FINAL Y DISPOSICIÓN DEL LOTE
            ========================================== */}
         <div className="mb-4">
           <div
-            className="font-bold px-3.5 py-2 uppercase tracking-[0.15em] border"
+            className="font-bold px-3 py-1.5 uppercase tracking-wide border flex items-center justify-between"
             style={{
               backgroundColor: sHeaderBg,
               color: sHeaderText,
               borderColor: tableBorder,
               fontFamily: titleFontFamily,
               fontSize: `${szSectionTitles}px`,
+              borderWidth: `${bWidth}px`,
+              borderBottom: 'none',
+              textAlign: alignSecTitles,
             }}
           >
-            <span className="italic font-normal">{cfg.section7Title}</span>
+            <span>{cfg.section6Title}</span>
           </div>
 
           <div
-            className="grid grid-cols-1 md:grid-cols-2 divide-y-2 md:divide-y-0 md:divide-x-2 border-2 bg-white text-[10px]"
+            className="p-2.5 bg-white space-y-2"
             style={{
+              border: `${bWidth}px solid ${tableBorder}`,
+            }}
+          >
+            {/* Fila 1: DICTAMEN con Badge + Checkboxes + ETIQUETA */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-bold text-xs uppercase tracking-wider" style={{ color: cellLabelText }}>
+                  DICTAMEN:
+                </span>
+
+                {/* Badge de Estatus */}
+                <span
+                  className={`px-3 py-1 text-xs font-black uppercase rounded shadow-xs text-white tracking-wider ${
+                    isApproved
+                      ? 'bg-emerald-600'
+                      : isRejected
+                      ? 'bg-red-600'
+                      : 'bg-amber-500'
+                  }`}
+                >
+                  {report.status}
+                </span>
+
+                {/* Checkboxes de Dictamen */}
+                <div className="flex items-center space-x-3 text-xs font-mono text-slate-700 pl-2">
+                  <button
+                    type="button"
+                    onClick={() => handleChange('status', 'APROBADO')}
+                    className={`cursor-pointer hover:text-emerald-700 transition ${
+                      isApproved ? 'font-black text-emerald-800' : 'text-slate-500'
+                    }`}
+                  >
+                    [{isApproved ? 'X' : ' '}] APROBADO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('status', 'RECHAZADO')}
+                    className={`cursor-pointer hover:text-red-700 transition ${
+                      isRejected ? 'font-black text-red-800' : 'text-slate-500'
+                    }`}
+                  >
+                    [{isRejected ? 'X' : ' '}] RECHAZADO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('status', 'CONDICIONADO')}
+                    className={`cursor-pointer hover:text-amber-700 transition ${
+                      report.status === 'CONDICIONADO' ? 'font-black text-amber-800' : 'text-slate-500'
+                    }`}
+                  >
+                    [{report.status === 'CONDICIONADO' ? 'X' : ' '}] CONDICIONADO
+                  </button>
+                </div>
+              </div>
+
+              {/* Tag Badge: ETIQUETA: ROJA / VERDE / AMARILLA */}
+              <div
+                className={`font-bold text-[11px] px-2.5 py-0.5 border rounded uppercase tracking-wider ${
+                  report.tagColor === 'Roja'
+                    ? 'bg-red-100 text-red-900 border-red-300'
+                    : report.tagColor === 'Amarilla'
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                }`}
+              >
+                ETIQUETA: {report.tagColor ? report.tagColor.toUpperCase() : (isRejected ? 'ROJA' : 'VERDE')}
+              </div>
+            </div>
+
+            {/* Fila 2: OBSERVACIONES TÉCNICAS en caja gris clara */}
+            <div className="border border-slate-200 bg-[#F8FAFC] rounded p-2.5 text-xs space-y-1.5">
+              <div className="flex items-start gap-1.5">
+                <strong className="text-slate-900 uppercase shrink-0 text-[11px]">OBSERVACIONES TÉCNICAS:</strong>
+                <textarea
+                  rows={2}
+                  value={report.observaciones || ''}
+                  onChange={(e) => handleChange('observaciones', e.target.value)}
+                  placeholder={
+                    isApproved
+                      ? 'El lote cumple satisfactoriamente con los criterios de calidad especificados en la normativa de maquila.'
+                      : 'Se detectaron desviaciones en empaque y código de barras. Requiere retrabajo y re-inspección.'
+                  }
+                  className="w-full bg-transparent border-none p-0 focus:outline-none text-slate-700 text-xs font-sans resize-none"
+                />
+              </div>
+
+              <div className="pt-1.5 border-t border-slate-200 border-dashed flex items-start gap-1.5">
+                <strong className="text-slate-900 uppercase shrink-0 text-[11px]">PLAN DE ACCIÓN:</strong>
+                <input
+                  type="text"
+                  value={report.planDeAccion || ''}
+                  onChange={(e) => handleChange('planDeAccion', e.target.value)}
+                  placeholder="Plan de acción y medidas correctivas (si aplica)..."
+                  className="w-full bg-transparent border-none p-0 focus:outline-none text-slate-700 text-xs font-sans"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ==========================================
+            SECCIÓN VII: FIRMAS DE CONFORMIDAD Y APROBACIÓN
+           ========================================== */}
+        <div className="mb-4">
+          <div
+            className="font-bold px-3 py-1.5 uppercase tracking-wide border"
+            style={{
+              backgroundColor: sHeaderBg,
+              color: sHeaderText,
+              borderColor: tableBorder,
+              fontFamily: titleFontFamily,
+              fontSize: `${szSectionTitles}px`,
+              borderWidth: `${bWidth}px`,
+              borderBottom: 'none',
+              textAlign: alignSecTitles,
+            }}
+          >
+            <span>{cfg.section7Title}</span>
+          </div>
+
+          <div
+            className="grid grid-cols-2 divide-x bg-white"
+            style={{
+              border: `${bWidth}px solid ${tableBorder}`,
               borderColor: tableBorder,
             }}
           >
-            {/* Firma 1: Inspector / Supervisor de Calidad */}
-            <div className="p-4 space-y-3">
-              <div
-                className="font-bold text-center border-b-2 pb-1.5 uppercase tracking-wider text-[10px] bg-[#FAF9F6] py-1"
-                style={{ borderColor: tableBorder, color: cellValText }}
-              >
+            {/* Firma 1: Inspector de Calidad */}
+            <div className="p-3 text-center flex flex-col justify-between h-[82px]">
+              <div className="text-[9px] font-bold text-slate-600 uppercase tracking-wider">
                 1. INSPECCIÓN Y LIBERACIÓN DE CALIDAD
               </div>
-              <div className="text-center px-4">
-                <div
-                  className="border-t-2 pt-3 mt-8 relative min-h-[110px] flex flex-col justify-end"
-                  style={{ borderColor: tableBorder }}
-                >
-                  {report.firmaCalidad?.signatureDataUrl ? (
-                    <img
-                      src={report.firmaCalidad.signatureDataUrl}
-                      alt="Firma Calidad"
-                      className="max-h-16 max-w-full mx-auto mb-1 object-contain"
-                    />
-                  ) : (
-                    <span className="absolute top-2 left-0 right-0 text-[8px] text-neutral-400 uppercase font-mono italic">
-                      Espacio para Firma / Rúbrica (Física o Digital)
-                    </span>
-                  )}
-                  <input
-                    type="text"
-                    value={report.firmaCalidad?.nombre || report.inspectorName || ''}
-                    onChange={(e) =>
-                      handleChange('firmaCalidad', { ...report.firmaCalidad, nombre: e.target.value })
-                    }
-                    style={{ color: cellValText, fontSize: `${szCellValues}px` }}
-                    className="w-full text-center font-bold bg-transparent focus:outline-none border-b border-dashed border-neutral-300 pb-0.5"
-                    placeholder="Nombre Inspector / Supervisor de Calidad"
-                  />
-                  <div className="font-black text-neutral-900 uppercase text-[10px] tracking-wider mt-1.5">
-                    REALIZÓ INSPECCIÓN (CALIDAD)
-                  </div>
-                  <div className="text-[9px] text-neutral-500 font-mono mt-0.5">
-                    Fecha: {report.firmaCalidad?.fecha || report.inspectionDate || 'Pendiente'}
-                  </div>
-                </div>
+              <div
+                className="text-lg font-bold text-slate-800"
+                style={{
+                  fontFamily: "'Dancing Script', 'Caveat', 'Brush Script MT', cursive, Georgia, serif",
+                }}
+              >
+                {report.firmaCalidad?.nombre || report.inspectorName || 'Insp. Bryan'}
+              </div>
+              <div className="text-[8px] text-slate-400 font-mono">
+                Firma Digital Registrada
               </div>
             </div>
 
             {/* Firma 2: Supervisor de Maquila */}
-            <div className="p-4 space-y-3">
-              <div
-                className="font-bold text-center border-b-2 pb-1.5 uppercase tracking-wider text-[10px] bg-[#FAF9F6] py-1"
-                style={{ borderColor: tableBorder, color: cellValText }}
-              >
+            <div className="p-3 text-center flex flex-col justify-between h-[82px]">
+              <div className="text-[9px] font-bold text-slate-600 uppercase tracking-wider">
                 2. CONFORMIDAD Y APROBACIÓN DE MAQUILA
               </div>
-              <div className="text-center px-4">
-                <div
-                  className="border-t-2 pt-3 mt-8 relative min-h-[110px] flex flex-col justify-end"
-                  style={{ borderColor: tableBorder }}
-                >
-                  {report.firmaMaquila?.signatureDataUrl ? (
-                    <img
-                      src={report.firmaMaquila.signatureDataUrl}
-                      alt="Firma Maquila"
-                      className="max-h-16 max-w-full mx-auto mb-1 object-contain"
-                    />
-                  ) : (
-                    <span className="absolute top-2 left-0 right-0 text-[8px] text-neutral-400 uppercase font-mono italic">
-                      Espacio para Firma / Rúbrica (Física o Digital)
-                    </span>
-                  )}
-                  <input
-                    type="text"
-                    value={report.firmaMaquila?.nombre || ''}
-                    onChange={(e) =>
-                      handleChange('firmaMaquila', { ...report.firmaMaquila, nombre: e.target.value })
-                    }
-                    style={{ color: cellValText, fontSize: `${szCellValues}px` }}
-                    className="w-full text-center font-bold bg-transparent focus:outline-none border-b border-dashed border-neutral-300 pb-0.5"
-                    placeholder="Nombre del Supervisor de Maquila"
-                  />
-                  <div className="font-black text-neutral-900 uppercase text-[10px] tracking-wider mt-1.5">
-                    APRUEBA INSPECCIÓN (SUPERVISIÓN MAQUILA)
-                  </div>
-                  <div className="text-[9px] text-neutral-500 font-mono mt-0.5">
-                    Fecha: {report.firmaMaquila?.fecha || report.inspectionDate || 'Pendiente'}
-                  </div>
-                </div>
+              <div
+                className="text-lg font-bold text-slate-800"
+                style={{
+                  fontFamily: "'Dancing Script', 'Caveat', 'Brush Script MT', cursive, Georgia, serif",
+                }}
+              >
+                {report.firmaMaquila?.nombre || 'Supervisor de Maquila'}
+              </div>
+              <div className="text-[8px] text-slate-400 font-mono">
+                Firma Digital Registrada
               </div>
             </div>
           </div>
         </div>
 
-        {/* Footer Note */}
+        {/* ==========================================
+            PIE DE PÁGINA NORMATIVO
+           ========================================== */}
         <div
-          className="mt-5 pt-2 border-t font-mono flex items-center justify-between italic"
+          className="mt-3 pt-2 border-t font-mono flex items-center justify-between text-[8.5px]"
           style={{
             borderColor: tableBorder,
             color: subtitleText,
-            fontSize: `${szFooterNote}px`,
           }}
         >
           <span>
-            {report.folioCode}, v{report.version}. Documento normativo propiedad de Suave y Fácil S. A. de C.V. Queda prohibida su reproducción sin autorización.
+            {cfg.documentCode || report.folioCode || 'CVD-CCA-F-08'}, v{cfg.version || report.version || '00'}. Documento normativo Suave y Fácil S.A. de C.V.
           </span>
-          <span className="font-bold not-italic uppercase tracking-widest" style={{ color: cellValText }}>
-            Página 1 de 1 (Carta)
+          <span className="font-bold text-slate-700 uppercase tracking-wider">
+            Página 1 de 1 (Carta 8.5" x 11")
           </span>
         </div>
       </div>

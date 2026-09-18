@@ -23,6 +23,27 @@ export interface QualityReportRow {
  * Convierte un objeto QualityReport al formato de fila para la tabla quality_reports en Supabase
  */
 export function reportToRow(report: QualityReport): QualityReportRow {
+  const startTime = report.startTime || '08:00';
+  const endTime = report.endTime || '09:00';
+  let durationMinutes = report.durationMinutes;
+  if (typeof durationMinutes !== 'number' || durationMinutes <= 0) {
+    const [h1, m1] = startTime.split(':').map(Number);
+    const [h2, m2] = endTime.split(':').map(Number);
+    if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+      const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+      durationMinutes = diff > 0 ? diff : 60;
+    } else {
+      durationMinutes = 60;
+    }
+  }
+
+  const enrichedReport: QualityReport = {
+    ...report,
+    startTime,
+    endTime,
+    durationMinutes,
+  };
+
   return {
     id: report.id,
     folio_ot: report.folioOT || '',
@@ -36,7 +57,7 @@ export function reportToRow(report: QualityReport): QualityReportRow {
     sample_size_required: report.sampleSizeRequired || 0,
     sample_size_inspected: report.sampleSizeInspected || 0,
     total_defectives: report.totalDefectives || 0,
-    data: report,
+    data: enrichedReport,
     updated_at: new Date().toISOString(),
   };
 }
@@ -54,6 +75,9 @@ export function rowToReport(row: QualityReportRow): QualityReport {
       status: (row.status as any) || row.data.status,
       inspectorName: row.inspector_name || row.data.inspectorName,
       inspectionDate: row.inspection_date || row.data.inspectionDate,
+      startTime: row.data.startTime || '08:00',
+      endTime: row.data.endTime || '09:00',
+      durationMinutes: row.data.durationMinutes ?? 60,
     };
   }
 

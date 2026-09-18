@@ -5,6 +5,7 @@ import { DEFAULT_CHECKLIST_ITEMS } from './utils/defaultChecklist';
 import { calculateAQLPlan } from './utils/aqlTable';
 import { exportReportToExcel, exportInspectionPackageZip } from './utils/excelExport';
 import { generateInspectionWordDocument } from './utils/wordExport';
+import { downloadOfficialSheetPdf } from './utils/officialSheetPdfExport';
 
 import { Header } from './components/Header';
 import { ExcelGridReport } from './components/ExcelGridReport';
@@ -447,6 +448,20 @@ export default function App() {
     window.print();
   };
 
+  // Direct High-Resolution Official Sheet PDF Download (300 DPI Letter)
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const handleDownloadOfficialPdf = async () => {
+    if (!activeReport) return;
+    setIsDownloadingPdf(true);
+    try {
+      await downloadOfficialSheetPdf(activeReport, templateConfig);
+    } catch (err) {
+      console.error('Error al generar PDF oficial en tamaño carta:', err);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   if (!activeReport) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
@@ -529,6 +544,7 @@ export default function App() {
           config={templateConfig}
           onSaveConfig={handleSaveTemplateConfig}
           onOpenCatalogUpload={() => setIsCatalogUploadOpen(true)}
+          currentReport={activeReport}
         />
 
         <CatalogUploadModal
@@ -573,6 +589,8 @@ export default function App() {
         onExportZipPackage={handleExportZipPackage}
         onExportWord={handleExportWord}
         onPrintLetter={handlePrintLetter}
+        onDownloadOfficialPdf={handleDownloadOfficialPdf}
+        isDownloadingPdf={isDownloadingPdf}
         currentReportTitle={`${activeReport.folioOT} • ${activeReport.skuArmado}`}
         isPrintMode={isPrintMode}
         setIsPrintMode={setIsPrintMode}
@@ -664,6 +682,7 @@ export default function App() {
         config={templateConfig}
         onSaveConfig={handleSaveTemplateConfig}
         onOpenCatalogUpload={() => setIsCatalogUploadOpen(true)}
+        currentReport={activeReport}
       />
 
       <CatalogUploadModal
