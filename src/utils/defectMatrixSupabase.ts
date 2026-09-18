@@ -243,8 +243,16 @@ export async function loadComboDefectsFromSupabase(skuArmado: string): Promise<{
     });
 
     if (res.data && res.data.length > 0) {
-      const items: DefectCheckItem[] = res.data.map((row) => ({
-        id: `${row.defect_id}-${skuArmado}`,
+      // Filtrar y normalizar exclusivamente con los defectos existentes en el Banco General
+      const validPoolIds = new Set(MASTER_GENERAL_DEFECT_BLOCKS.map((b) => b.id));
+      const filteredRows = res.data.filter((row) => {
+        const rawDefectId = row.defect_id?.replace(new RegExp(`-${skuArmado}$`), '');
+        return validPoolIds.has(row.defect_id) || validPoolIds.has(rawDefectId);
+      });
+
+      const sourceRows = filteredRows.length > 0 ? filteredRows : res.data;
+      const items: DefectCheckItem[] = sourceRows.map((row) => ({
+        id: row.defect_id.endsWith(`-${skuArmado}`) ? row.defect_id : `${row.defect_id}-${skuArmado}`,
         name: row.name,
         severity: row.severity,
         category: row.category,
@@ -260,11 +268,29 @@ export async function loadComboDefectsFromSupabase(skuArmado: string): Promise<{
     console.warn('Error cargando combo matrix desde Supabase:', e);
   }
 
-  // Fallback a almacenamiento local
+  // Fallback a almacenamiento local o directamente los 3 bloques oficiales del banco
   const local = getStoredDefectsForCombo(skuArmado);
+  if (local && local.length > 0) {
+    return {
+      success: true,
+      data: local,
+      fromCloud: false,
+    };
+  }
+
+  const defaultMasterItems: DefectCheckItem[] = MASTER_GENERAL_DEFECT_BLOCKS.map((it) => ({
+    id: `${it.id}-${skuArmado}`,
+    name: it.name,
+    severity: it.severity,
+    category: it.category,
+    description: it.description || '',
+    defectsFound: 0,
+    passed: true,
+  }));
+
   return {
-    success: !!local,
-    data: local || [],
+    success: true,
+    data: defaultMasterItems,
     fromCloud: false,
   };
 }

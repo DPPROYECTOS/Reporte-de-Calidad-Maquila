@@ -49,23 +49,31 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Handle high DPI displays
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * 2;
-    canvas.height = rect.height * 2;
-    ctx.scale(2, 2);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#0f172a'; // slate-900
-    ctx.lineWidth = 2.5;
+    const setupCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width > 0 ? rect.width : (canvas.parentElement?.clientWidth || 320);
+      const height = rect.height > 0 ? rect.height : 112;
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+      ctx.scale(2, 2);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#0f172a'; // slate-900
+      ctx.lineWidth = 2.5;
 
-    if (signatureDataUrl) {
-      renderSignature(signatureDataUrl);
-    } else {
-      ctx.clearRect(0, 0, rect.width, rect.height);
-      setHasStrokes(false);
-      setIsCaptured(false);
-    }
+      if (signatureDataUrl) {
+        renderSignature(signatureDataUrl);
+      } else {
+        ctx.clearRect(0, 0, width, height);
+        setHasStrokes(false);
+        setIsCaptured(false);
+      }
+    };
+
+    setupCanvas();
+
+    window.addEventListener('resize', setupCanvas);
+    return () => window.removeEventListener('resize', setupCanvas);
   }, [signatureDataUrl, renderSignature]);
 
   const getCoordinates = (
@@ -210,7 +218,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
           onTouchStart={startDrawing}
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
-          className={`w-full h-28 bg-white block ${
+          className={`w-full max-w-full h-28 bg-white block ${
             isCaptured ? 'pointer-events-none opacity-90' : 'cursor-crosshair'
           }`}
         />

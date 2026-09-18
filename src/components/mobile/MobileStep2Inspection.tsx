@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QualityReport, DefectCheckItem, DefectSeverity } from '../../types/qualityReport';
+import { DEFAULT_CHECKLIST_ITEMS } from '../../utils/defaultChecklist';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -41,6 +42,37 @@ export const MobileStep2Inspection: React.FC<MobileStep2InspectionProps> = ({
   const [activeSeverityFilter, setActiveSeverityFilter] = useState<'TODOS' | DefectSeverity>('TODOS');
   const [showComboDefectsManager, setShowComboDefectsManager] = useState<boolean>(false);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+
+  // Barrido automático: garantizar que solo existan estrictamente los 3 defectos del banco de defectos
+  useEffect(() => {
+    const validPoolIds = new Set(DEFAULT_CHECKLIST_ITEMS.map((b) => b.id));
+    const currentItems = report.defectItems || [];
+    const needsSweep =
+      currentItems.length !== DEFAULT_CHECKLIST_ITEMS.length ||
+      currentItems.some((it) => {
+        const rawId = it.id?.replace(new RegExp(`-${report.skuArmado}$`), '');
+        return !validPoolIds.has(it.id) && !validPoolIds.has(rawId);
+      });
+
+    if (needsSweep) {
+      const sanitizedItems: DefectCheckItem[] = DEFAULT_CHECKLIST_ITEMS.map((masterItem) => {
+        const existing = currentItems.find(
+          (d) => d.id === masterItem.id || d.name.toLowerCase() === masterItem.name.toLowerCase()
+        );
+        return {
+          ...masterItem,
+          id: `${masterItem.id}-${report.skuArmado || 'COMBO'}`,
+          defectsFound: existing ? existing.defectsFound : 0,
+          passed: existing ? existing.passed : true,
+        };
+      });
+
+      onUpdateReport({
+        ...report,
+        defectItems: sanitizedItems,
+      });
+    }
+  }, [report.skuArmado, report.defectItems?.length]);
 
   // Recalculate totals and auto-evaluate status
   const updateDefectItem = (id: string, delta: number) => {

@@ -207,7 +207,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
 
     if (targetStep === 2 && !isStep1Complete) {
       setLockedStepAlert(
-        '🔒 Candado Poka-Yoke Paso 2 Bloqueado: Primero debes completar los 4 requisitos del Paso 1 (Inspector, Folio OT, Clave SKU y Cantidad de Piezas) para poder comenzar la revisión.'
+        '🔒 Candado de Seguridad Paso 2: La app no puede continuar sin datos. Primero completa los 4 campos del Paso 1 (Inspector, Folio OT, SKU y Cantidad) para poder iniciar la revisión.'
       );
       return;
     }
@@ -215,13 +215,13 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     if (targetStep === 3) {
       if (!isStep1Complete) {
         setLockedStepAlert(
-          '🔒 Candado Poka-Yoke Paso 3 Bloqueado: Primero debes completar los 4 requisitos del Paso 1.'
+          '🔒 Candado de Seguridad Paso 3: Primero debes completar los 4 requisitos del Paso 1.'
         );
         return;
       }
       if (!isStep2Complete) {
         setLockedStepAlert(
-          '🔒 Candado Poka-Yoke Paso 3 Bloqueado: Primero debes registrar la inspección física de las piezas de la muestra en el Paso 2 antes de tomar las fotos.'
+          '🔒 Candado de Seguridad Paso 3: Primero debes registrar la inspección física de las piezas en el Paso 2; no se pueden tomar evidencias de una muestra que aún no se evalúa.'
         );
         return;
       }
@@ -230,13 +230,13 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     if (targetStep === 4) {
       if (!isStep1Complete) {
         setLockedStepAlert(
-          '🔒 Candado Poka-Yoke Paso 4 Bloqueado: Primero debes configurar la orden en el Paso 1.'
+          '🔒 Candado de Seguridad Paso 4: Primero debes configurar la orden en el Paso 1.'
         );
         return;
       }
       if (!isStep2Complete) {
         setLockedStepAlert(
-          '🔒 Candado Poka-Yoke Paso 4 Bloqueado: Primero debes registrar la inspección física de las piezas en el Paso 2.'
+          '🔒 Candado de Seguridad Paso 4: Primero debes registrar la inspección física de las piezas en el Paso 2.'
         );
         return;
       }
@@ -248,7 +248,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
           hasPhotoSlot(report.photoPalletized),
         ].filter(Boolean).length;
         setLockedStepAlert(
-          `🔒 Candado Poka-Yoke Paso 4 Bloqueado: Faltan ${4 - capturedPhotos} de las 4 fotos obligatorias en el Paso 3. Por norma de calidad debes tomar las 4 fotos antes de emitir y firmar el dictamen final.`
+          `🔒 Candado de Seguridad Paso 4: Faltan ${4 - capturedPhotos} de las 4 fotos obligatorias en el Paso 3. Por norma de calidad debes capturar las 4 fotos antes de emitir y firmar el dictamen.`
         );
         return;
       }
@@ -288,8 +288,8 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
   > = {
     1: {
       tag: 'PASO 1 DE 4',
-      title: 'Configura la Orden y el Producto',
-      instruction: 'Selecciona el producto o combo y tu nombre. El sistema calculará automáticamente cuántas piezas debes revisar.',
+      title: 'Datos del Lote: Llena los 4 campos antes de avanzar',
+      instruction: 'Selecciona tu nombre, la OT, el combo y la cantidad. La app calcula el muestreo en automático para ahorrarte cuentas; solo completa lo básico para que el sistema pueda abrir el Paso 2.',
       bg: 'bg-amber-50/90',
       border: 'border-amber-300',
       tagBadge: 'bg-amber-100 text-amber-950 border-amber-300',
@@ -298,8 +298,8 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     },
     2: {
       tag: 'PASO 2 DE 4',
-      title: 'Revisa las Piezas Físicas',
-      instruction: 'Toma la cantidad de piezas de la muestra. Si encuentras algún defecto o daño, tócalo para sumarlo.',
+      title: 'Revisión Física: Observa las piezas antes de tocar la pantalla',
+      instruction: 'Inspecciona la muestra física sobre la mesa. Si de verdad ninguna pieza tiene falla, confirma la muestra limpia abajo; si viste defectos, márcalos en su tarjeta en vez de ignorarlos.',
       bg: 'bg-sky-50/90',
       border: 'border-sky-300',
       tagBadge: 'bg-sky-100 text-sky-950 border-sky-300',
@@ -308,8 +308,8 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     },
     3: {
       tag: 'PASO 3 DE 4',
-      title: 'Toma las 4 Fotos Obligatorias',
-      instruction: 'Captura las 4 evidencias requeridas (inicial, armado, muestra y tarima) para desbloquear la firma.',
+      title: 'Evidencia Fotográfica: La cámara no adivina el producto',
+      instruction: 'Captura las 4 evidencias nítidas enfocando el combo y la tarima (no el piso ni tus dedos). Son necesarias para comprobar que la inspección realmente se realizó.',
       bg: 'bg-purple-50/90',
       border: 'border-purple-300',
       tagBadge: 'bg-purple-100 text-purple-950 border-purple-300',
@@ -318,8 +318,8 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     },
     4: {
       tag: 'PASO 4 DE 4',
-      title: 'Revisa el Dictamen y Firma',
-      instruction: 'El sistema calcula en automático si el lote se APRUEBA o RECHAZA según la norma AQL. Firma con el dedo.',
+      title: 'Dictamen y Firmas: El sistema ya calculó el resultado',
+      instruction: 'El dictamen AQL se determinó en automático según los defectos que reportaste. Tu única tarea restante es avalar con tu firma digital en el recuadro blanco y guardar.',
       bg: 'bg-emerald-50/90',
       border: 'border-emerald-300',
       tagBadge: 'bg-emerald-100 text-emerald-950 border-emerald-300',
@@ -427,21 +427,8 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
               </div>
             </div>
 
-            {/* Derecha: Acciones Rápidas (Catálogo, Guía, Defectos, AQL, Historial) */}
+            {/* Derecha: Acciones Rápidas (Guía, Defectos, AQL, Historial) */}
             <div className="flex items-center space-x-1 sm:space-x-1.5 shrink-0">
-              {onOpenCatalogUpload && (
-                <button
-                  type="button"
-                  onClick={onOpenCatalogUpload}
-                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 p-1.5 rounded-lg active:scale-95 transition flex items-center space-x-1 cursor-pointer"
-                  title="Subir o Sincronizar Catálogo de Claves y Armados (Supabase)"
-                  aria-label="Catálogo de Armados"
-                >
-                  <Database className="w-3.5 h-3.5 text-emerald-300" />
-                  <span className="text-[10px] font-bold hidden sm:inline text-emerald-300">Catálogo</span>
-                </button>
-              )}
-
               {onOpenQualityGuide && (
                 <button
                   type="button"
@@ -642,7 +629,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
       <div ref={topAnchorRef} />
 
       {/* Contenido Principal con Contenedor Responsivo para Celular y Tablet */}
-      <main className="max-w-lg sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto p-3 sm:p-5 pt-2 sm:pt-3">
+      <main className="w-full max-w-lg sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto p-3 sm:p-5 pt-2 sm:pt-3 overflow-x-hidden">
         {/* Notificaciones flotantes de toques secretos si están activos */}
         {(shieldTapCount > 0 || calidadTapCount > 0 || catalogTapCount > 0) && (
           <div className="mb-2.5 p-2 bg-slate-900 text-white rounded-xl border border-amber-400 text-[11px] font-bold flex items-center justify-between">

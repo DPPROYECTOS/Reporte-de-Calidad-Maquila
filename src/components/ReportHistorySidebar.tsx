@@ -5,7 +5,6 @@ import {
   Plus,
   FileText,
   Trash2,
-  RotateCcw,
   RefreshCw,
   Edit3,
   Lock,
@@ -345,26 +344,6 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
             aria-label="Sincronizar con Supabase"
           >
             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-amber-600' : ''}`} />
-          </button>
-
-          {/* Botón de restablecer ejemplos */}
-          <button
-            onClick={() => {
-              setDeleteModal({
-                isOpen: true,
-                title: '¿Restablecer reportes de ejemplo?',
-                itemName: 'Historial de Auditorías',
-                message:
-                  '¿Deseas restaurar los 3 ejemplos oficiales del procedimiento CVD-AMA-PR-01 en el historial y sincronizarlos con la base de datos?',
-                confirmText: 'Sí, restablecer',
-                onConfirm: onResetSamples,
-              });
-            }}
-            className="p-2.5 text-slate-700 hover:text-slate-950 hover:bg-slate-100 border border-slate-300 rounded-xl transition active:scale-95 shrink-0 cursor-pointer"
-            title="Restablecer Ejemplos del Procedimiento"
-            aria-label="Restablecer Ejemplos"
-          >
-            <RotateCcw className="w-4 h-4" />
           </button>
         </div>
 

@@ -43,11 +43,11 @@ export const SAMPLE_REPORTS: QualityReport[] = [
     reLimit: aqlCoppel.re,
 
     defectItems: DEFAULT_CHECKLIST_ITEMS.map((item) => {
-      if (item.id === 'arm-01') {
+      if (item.id === 'block-may-03') {
         return {
           ...item,
-          defectsFound: 12, // 12 sampled pieces missing utensil (extrapolated 120 pz in total lot)
-          description: 'Se detectaron 12 cajas en la muestra sin el utensilio liso Jade incluido. Equivale a 120 pz faltantes en el lote total de 924 pz.',
+          defectsFound: 12, // 12 sampled boxes damaged
+          description: 'Se detectaron 12 cajas máster aplastadas o rotas en la muestra recibida de Almacén F.',
           passed: false,
         };
       }
@@ -113,11 +113,11 @@ export const SAMPLE_REPORTS: QualityReport[] = [
     reLimit: aqlStock.re,
 
     defectItems: DEFAULT_CHECKLIST_ITEMS.map((item) => {
-      if (item.id === 'arm-01') {
+      if (item.id === 'block-men-03') {
         return {
           ...item,
           defectsFound: 1,
-          description: 'Sobrante menor de 1 pz utensilio liso de origen en la tarima #2. No afecta funcionalidad ni presentación del empaque final.',
+          description: 'Sobrante menor de 1 pz con pliegue en cinta sin abertura. No compromete la protección.',
           passed: true,
         };
       }

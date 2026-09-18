@@ -139,7 +139,7 @@ _Generado con Sistema de Inspección de Calidad Maquila_`;
   };
 
   return (
-    <div className="space-y-4 pb-32 sm:pb-28">
+    <div className="space-y-4 pb-48 sm:pb-44 max-w-full overflow-x-hidden">
       {/* 1. DICTAMEN FINAL Y ETIQUETA FÍSICA A COLOCAR */}
       <div
         className={`p-5 rounded-2xl border-2 shadow-md transition-all ${
@@ -410,6 +410,18 @@ _Generado con Sistema de Inspección de Calidad Maquila_`;
           )}
         </div>
 
+        {/* BOTÓN DIRECTO DE NUEVA INSPECCIÓN DENTRO DEL CONTENIDO */}
+        <div className="pt-2 border-t border-neutral-800">
+          <button
+            type="button"
+            onClick={onNewReport}
+            className="w-full py-2.5 sm:py-3 px-4 bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shadow-md cursor-pointer"
+          >
+            <Plus className="w-4 h-4 text-slate-950 stroke-[3]" />
+            <span>Iniciar Nueva Inspección (Nuevo Lote)</span>
+          </button>
+        </div>
+
         {zipSuccessMsg && (
           <div className="bg-blue-600 text-white text-[11px] font-bold p-2.5 rounded-xl text-center flex items-center justify-center space-x-2 shadow-sm animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-amber-300" />
@@ -439,34 +451,36 @@ _Generado con Sistema de Inspección de Calidad Maquila_`;
         </div>
       )}
 
-      {/* BARRA FLOTANTE DE ACCIÓN PRINCIPAL */}
-      <div className="fixed bottom-0 left-0 right-0 p-3 sm:py-3.5 bg-white/95 backdrop-blur-md border-t border-neutral-200 z-40 shadow-lg">
-        <div className="max-w-lg sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto flex items-center space-x-2">
+      {/* BARRA FLOTANTE DE ACCIÓN PRINCIPAL (RESPONSIVA, SIN DESBORDAMIENTOS) */}
+      <div className="fixed bottom-0 left-0 right-0 p-2.5 sm:py-3.5 bg-white/95 backdrop-blur-md border-t border-neutral-200 z-30 shadow-lg">
+        <div className="max-w-lg sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 px-1">
           <button
             type="button"
             onClick={onPrevStep}
-            className="w-12 py-3 sm:py-3.5 bg-neutral-100 hover:bg-neutral-200 active:scale-95 text-neutral-800 font-black rounded-xl border border-neutral-300 flex items-center justify-center transition shrink-0 cursor-pointer"
+            className="w-10 sm:w-12 h-11 sm:h-12 bg-neutral-100 hover:bg-neutral-200 active:scale-95 text-neutral-800 font-black rounded-xl border border-neutral-300 flex items-center justify-center transition shrink-0 cursor-pointer"
             title="Volver a las Fotos"
+            aria-label="Volver a las Fotos"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5 shrink-0" />
           </button>
 
           <button
             type="button"
             onClick={handleSaveReport}
-            className="flex-1 py-3 sm:py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-2 shadow-md cursor-pointer"
+            className="flex-1 min-w-0 h-11 sm:h-12 px-2 sm:px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm uppercase tracking-wide rounded-xl transition flex items-center justify-center space-x-1.5 sm:space-x-2 shadow-md cursor-pointer"
           >
-            <Save className="w-4 h-4" />
-            <span>Guardar y Cerrar Lote</span>
+            <Save className="w-4 h-4 shrink-0" />
+            <span className="truncate hidden sm:inline">Guardar y Cerrar Lote</span>
+            <span className="truncate sm:hidden">Guardar Lote</span>
           </button>
 
           <button
             type="button"
             onClick={onNewReport}
-            className="py-3 sm:py-3.5 px-3.5 bg-neutral-900 hover:bg-neutral-800 active:scale-98 text-white font-black text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1 shrink-0 cursor-pointer"
+            className="h-11 sm:h-12 px-3 sm:px-4 bg-neutral-900 hover:bg-neutral-800 active:scale-98 text-white font-black text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center space-x-1 shrink-0 cursor-pointer border border-neutral-800 shadow-sm"
             title="Iniciar Nuevo Lote"
           >
-            <Plus className="w-4 h-4 text-amber-400" />
+            <Plus className="w-4 h-4 text-amber-400 shrink-0 stroke-[2.5]" />
             <span>Nuevo</span>
           </button>
         </div>

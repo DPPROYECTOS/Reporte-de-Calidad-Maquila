@@ -220,19 +220,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls: Tools + Zoom + Excel Export + Print Letter / PDF */}
         <div className="flex items-center flex-wrap gap-2 text-xs font-semibold uppercase tracking-wider">
-          {/* Botón Catálogo de Armados y Claves */}
-          {onOpenCatalogUpload && (
-            <button
-              type="button"
-              onClick={onOpenCatalogUpload}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 rounded-xl font-bold border border-emerald-500/30 transition active:scale-95 shadow-sm"
-              title="Subir o Sincronizar Catálogo de Claves y Armados (Supabase)"
-            >
-              <Database className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Catálogo</span>
-            </button>
-          )}
-
           {/* Botón Matriz de Defectos por Combo */}
           {onOpenComboDefectsModal && (
             <button
