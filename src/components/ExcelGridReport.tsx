@@ -147,7 +147,18 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
 
   // Field Update Handler
   const handleChange = (field: keyof QualityReport, value: any) => {
-    const updated = { ...report, [field]: value, updatedAt: new Date().toISOString() };
+    const updated: QualityReport = { ...report, [field]: value, updatedAt: new Date().toISOString() };
+
+    // Sincronización automática de identificadores clave
+    if (field === 'noMaquila') {
+      updated.folioMaquila = value;
+    } else if (field === 'noPedido') {
+      updated.folioOT = value;
+    } else if (field === 'folioOT' && !report.noPedido) {
+      updated.noPedido = value;
+    } else if (field === 'folioMaquila' && !report.noMaquila) {
+      updated.noMaquila = value;
+    }
 
     // Auto recalculate AQL if totalLotSize changes
     if (field === 'totalLotSize') {
@@ -707,6 +718,48 @@ export const ExcelGridReport: React.FC<ExcelGridReportProps> = ({
                     onChange={(e) => handleChange('endTime', e.target.value)}
                     style={{ color: cellValText, fontSize: `${szCellValues}px` }}
                     className="w-full bg-transparent px-1 py-0.5 font-mono focus:outline-emerald-600"
+                  />
+                </td>
+              </tr>
+
+              {/* FILA IDENTIFICADORES SHAREPOINT: NO. MAQUILA (REGISTRO) Y NO. PEDIDO (EVIDENCIAS) */}
+              <tr>
+                <td
+                  className="font-bold px-2 py-1.5 border uppercase tracking-wider text-emerald-950 bg-emerald-50/60"
+                  style={{ borderColor: tableBorder, fontSize: `${szCellLabels}px` }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span>No. Maquila:</span>
+                    <span className="text-[8px] px-1 py-0.2 bg-emerald-600 text-white rounded font-mono">REGISTRO</span>
+                  </div>
+                </td>
+                <td className="p-1 border bg-emerald-50/20" style={{ borderColor: tableBorder }}>
+                  <input
+                    type="text"
+                    value={report.noMaquila || report.folioMaquila || ''}
+                    onChange={(e) => handleChange('noMaquila', e.target.value)}
+                    placeholder="Ej. 2779"
+                    style={{ color: cellValText, fontSize: `${szCellValues}px` }}
+                    className="w-full bg-transparent px-1 py-0.5 font-mono font-bold text-emerald-900 focus:outline-emerald-600"
+                  />
+                </td>
+                <td
+                  className="font-bold px-2 py-1.5 border uppercase tracking-wider text-blue-950 bg-blue-50/60"
+                  style={{ borderColor: tableBorder, fontSize: `${szCellLabels}px` }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span>No. Pedido:</span>
+                    <span className="text-[8px] px-1 py-0.2 bg-blue-600 text-white rounded font-mono">EVIDENCIAS</span>
+                  </div>
+                </td>
+                <td className="p-1 border bg-blue-50/20" style={{ borderColor: tableBorder }}>
+                  <input
+                    type="text"
+                    value={report.noPedido || report.folioOT || ''}
+                    onChange={(e) => handleChange('noPedido', e.target.value)}
+                    placeholder="Ej. PED-2779"
+                    style={{ color: cellValText, fontSize: `${szCellValues}px` }}
+                    className="w-full bg-transparent px-1 py-0.5 font-mono font-bold text-blue-900 focus:outline-blue-600"
                   />
                 </td>
               </tr>

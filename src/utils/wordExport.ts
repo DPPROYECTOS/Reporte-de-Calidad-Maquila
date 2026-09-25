@@ -74,14 +74,14 @@ export async function generateInspectionWordDocument(report: QualityReport): Pro
                     children: [
                       new Paragraph({
                         children: [
-                          new TextRun({ text: 'Folio OT: ', bold: true, size: 20 }),
-                          new TextRun({ text: report.folioOT || 'S/N', size: 20 }),
+                          new TextRun({ text: 'No. Pedido (EVIDENCIAS): ', bold: true, size: 20 }),
+                          new TextRun({ text: report.noPedido || report.folioOT || 'S/N', size: 20 }),
                         ],
                       }),
                       new Paragraph({
                         children: [
-                          new TextRun({ text: 'Folio Maquila: ', bold: true, size: 20 }),
-                          new TextRun({ text: report.folioMaquila || 'S/N', size: 20 }),
+                          new TextRun({ text: 'No. Maquila (REGISTRO): ', bold: true, size: 20 }),
+                          new TextRun({ text: report.noMaquila || report.folioMaquila || 'S/N', size: 20 }),
                         ],
                       }),
                       new Paragraph({

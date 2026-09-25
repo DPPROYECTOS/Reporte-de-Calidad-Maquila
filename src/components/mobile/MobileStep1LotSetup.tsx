@@ -184,14 +184,15 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
     handleLotSizeChange(next);
   };
 
-  // 4 REQUISITOS POKA-YOKE OBLIGATORIOS PARA CALIDAD
+  // REQUISITOS POKA-YOKE OBLIGATORIOS PARA CALIDAD
   const hasInspector = Boolean(report.inspectorName && report.inspectorName.trim() !== '');
-  const hasFolio = Boolean(report.folioOT && report.folioOT.trim() !== '');
+  const hasNoMaquila = Boolean((report.noMaquila && report.noMaquila.trim() !== '') || (report.folioMaquila && report.folioMaquila.trim() !== ''));
+  const hasNoPedido = Boolean((report.noPedido && report.noPedido.trim() !== '') || (report.folioOT && report.folioOT.trim() !== ''));
   const hasSku = Boolean(report.skuArmado && report.skuArmado.trim() !== '');
   const hasLotSize = Boolean(report.totalLotSize && report.totalLotSize > 0);
 
-  const completedCount = [hasInspector, hasFolio, hasSku, hasLotSize].filter(Boolean).length;
-  const isFormReady = hasInspector && hasFolio && hasSku && hasLotSize;
+  const completedCount = [hasInspector, hasNoMaquila, hasNoPedido, hasSku, hasLotSize].filter(Boolean).length;
+  const isFormReady = hasInspector && hasNoMaquila && hasNoPedido && hasSku && hasLotSize;
 
   return (
     <div className="space-y-4 pb-32 sm:pb-28">
@@ -203,36 +204,36 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
             <span>Paso 1: Configurar Lote de Inspección</span>
           </div>
           <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-200/80 text-amber-900 border border-amber-300">
-            {completedCount} / 4 completados
+            {completedCount} / 5 completados
           </span>
         </div>
         <h2 className="text-base font-black text-neutral-900 leading-tight">
           Datos de la Orden y Producto Maquilado
         </h2>
         <p className="text-xs text-neutral-600 leading-relaxed">
-          Ingresa los 4 datos obligatorios de Calidad. El candado del Paso 2 se abrirá en verde cuando todos estén listos.
+          Ingresa los datos obligatorios de Calidad. La maquila impacta la pestaña <strong>REGISTRO</strong> y el pedido la pestaña <strong>EVIDENCIAS</strong> de SharePoint.
         </p>
       </div>
 
-      {/* 1. Nombre del Inspector y Folio de OT */}
+      {/* 1. Nombre del Inspector, No. de Maquila y No. de Pedido */}
       <div className="bg-white p-4 rounded-2xl border-2 border-neutral-200 shadow-xs space-y-3">
         <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
           <div className="flex items-center space-x-2">
             <User className="w-4 h-4 text-neutral-700" />
             <h3 className="font-bold text-xs uppercase tracking-wider text-neutral-900">
-              1. Inspector y Folio de Orden (OT)
+              1. Inspector, No. de Maquila y No. de Pedido
             </h3>
           </div>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-            hasInspector && hasFolio ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
+            hasInspector && hasNoMaquila && hasNoPedido ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
           }`}>
-            {hasInspector && hasFolio ? '✓ Completo' : 'Obligatorio'}
+            {hasInspector && hasNoMaquila && hasNoPedido ? '✓ Completo' : 'Obligatorio'}
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* Inspector */}
-          <div>
+          <div className="sm:col-span-2">
             <label className="block text-[11px] font-bold text-neutral-700 uppercase mb-1">
               Supervisor / Inspector de Calidad: <span className="text-red-500">*</span>
             </label>
@@ -293,31 +294,69 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
             )}
           </div>
 
-          {/* Folio OT */}
-          <div>
-            <label className="block text-[11px] font-bold text-neutral-700 uppercase mb-1">
-              Folio de Orden de Trabajo (OT): <span className="text-red-500">*</span>
-            </label>
+          {/* No. de Maquila (Pestaña REGISTRO / Tabla2) */}
+          <div className="bg-emerald-50/40 p-3 rounded-xl border border-emerald-200 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-black text-emerald-950 uppercase tracking-tight">
+                No. de Maquila (REGISTRO): <span className="text-red-500">*</span>
+              </label>
+              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded border border-emerald-300">
+                Tabla2 REGISTRO
+              </span>
+            </div>
             <div className="relative">
               <input
                 type="text"
-                value={report.folioOT}
+                value={report.noMaquila ?? report.folioMaquila ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value.trim();
+                  onUpdateReport({ 
+                    ...report, 
+                    noMaquila: val,
+                    folioMaquila: val 
+                  });
+                }}
+                placeholder="Ej. 2779 (número oficial)"
+                className={`w-full border-2 rounded-xl px-3 py-2 text-sm font-mono font-black text-neutral-900 focus:bg-white focus:border-emerald-600 focus:outline-none transition ${
+                  hasNoMaquila ? 'bg-white border-emerald-400' : 'bg-white border-neutral-300'
+                }`}
+              />
+            </div>
+            <span className="text-[10px] text-emerald-800 block leading-tight">
+              Número clave para registrar y buscar datos en la hoja de <strong>REGISTRO</strong>.
+            </span>
+          </div>
+
+          {/* No. de Pedido (Pestaña EVIDENCIAS FOTOGRÁFICAS / Tabla1) */}
+          <div className="bg-blue-50/40 p-3 rounded-xl border border-blue-200 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-black text-blue-950 uppercase tracking-tight">
+                No. de Pedido (EVIDENCIAS): <span className="text-red-500">*</span>
+              </label>
+              <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded border border-blue-300">
+                Tabla1 EVIDENCIAS
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                value={report.noPedido ?? report.folioOT ?? ''}
                 onChange={(e) => {
                   const val = e.target.value.toUpperCase();
                   onUpdateReport({ 
                     ...report, 
-                    folioOT: val,
-                    folioMaquila: val.replace(/[^0-9]/g, '') || val 
+                    noPedido: val,
+                    folioOT: val 
                   });
                 }}
-                placeholder="Ingresa el Folio (ej. OT-2420)"
-                className={`w-full border-2 rounded-xl px-3 py-2.5 text-sm font-mono font-black text-neutral-900 focus:bg-white focus:border-neutral-900 focus:outline-none uppercase transition ${
-                  hasFolio ? 'bg-emerald-50/50 border-emerald-300' : 'bg-neutral-50 border-neutral-300'
+                placeholder="Ej. PED-2779 o OT-2779"
+                className={`w-full border-2 rounded-xl px-3 py-2 text-sm font-mono font-black text-neutral-900 focus:bg-white focus:border-blue-600 focus:outline-none uppercase transition ${
+                  hasNoPedido ? 'bg-white border-blue-400' : 'bg-white border-neutral-300'
                 }`}
               />
             </div>
-            <span className="text-[10px] text-neutral-500 mt-0.5 block">
-              Escribe el número de folio tal como viene en la orden física.
+            <span className="text-[10px] text-blue-800 block leading-tight">
+              Identificador que vincula fotos en <strong>Evidencias fotográficas</strong>.
             </span>
           </div>
 
@@ -680,7 +719,7 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
           {/* Requisito 1: Inspector */}
           <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
             hasInspector ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-red-50 border-red-200 text-red-700'
@@ -689,34 +728,42 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
             <span className="font-black ml-2 shrink-0">{hasInspector ? '✓' : '❌ Falta'}</span>
           </div>
 
-          {/* Requisito 2: Folio OT */}
+          {/* Requisito 2: No. de Maquila */}
           <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-            hasFolio ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-red-50 border-red-200 text-red-700'
+            hasNoMaquila ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-red-50 border-red-200 text-red-700'
           }`}>
-            <span className="font-bold truncate">2. Folio de Orden (OT)</span>
-            <span className="font-black ml-2 shrink-0">{hasFolio ? '✓' : '❌ Falta'}</span>
+            <span className="font-bold truncate">2. No. Maquila (REGISTRO)</span>
+            <span className="font-black ml-2 shrink-0">{hasNoMaquila ? '✓' : '❌ Falta'}</span>
           </div>
 
-          {/* Requisito 3: Clave SKU */}
+          {/* Requisito 3: No. de Pedido */}
+          <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+            hasNoPedido ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-red-50 border-red-200 text-red-700'
+          }`}>
+            <span className="font-bold truncate">3. No. Pedido (EVIDENCIAS)</span>
+            <span className="font-black ml-2 shrink-0">{hasNoPedido ? '✓' : '❌ Falta'}</span>
+          </div>
+
+          {/* Requisito 4: Clave SKU */}
           <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
             hasSku ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-red-50 border-red-200 text-red-700'
           }`}>
-            <span className="font-bold truncate">3. Clave / SKU Producto</span>
+            <span className="font-bold truncate">4. Clave / SKU Producto</span>
             <span className="font-black ml-2 shrink-0">{hasSku ? '✓' : '❌ Falta'}</span>
           </div>
 
-          {/* Requisito 4: Cantidad */}
-          <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+          {/* Requisito 5: Cantidad */}
+          <div className={`p-2.5 rounded-xl border flex items-center justify-between sm:col-span-2 lg:col-span-1 ${
             hasLotSize ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-red-50 border-red-200 text-red-700'
           }`}>
-            <span className="font-bold truncate">4. Cantidad de Piezas (&gt;0)</span>
+            <span className="font-bold truncate">5. Cantidad de Piezas (&gt;0)</span>
             <span className="font-black ml-2 shrink-0">{hasLotSize ? '✓' : '❌ Falta'}</span>
           </div>
         </div>
 
         {!isFormReady && (
           <p className="text-[11px] text-amber-800 font-medium bg-amber-50 p-2.5 rounded-xl border border-amber-200">
-            👉 <strong>Candado Poka-Yoke Activo:</strong> Completa los 4 campos obligatorios para que el botón inferior se active en <strong>verde</strong>.
+            👉 <strong>Candado Poka-Yoke Activo:</strong> Completa los 5 campos obligatorios para que el botón inferior se active en <strong>verde</strong>.
           </p>
         )}
       </div>
@@ -741,7 +788,7 @@ export const MobileStep1LotSetup: React.FC<MobileStep1LotSetupProps> = ({
               className="w-full py-3 sm:py-3.5 px-4 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition bg-neutral-200 text-neutral-500 border border-neutral-300 cursor-not-allowed"
             >
               <Lock className="w-4 h-4 text-neutral-400 shrink-0" />
-              <span>🔒 Paso 2 Bloqueado: Completa los 4 Requisitos Arriba</span>
+              <span>🔒 Paso 2 Bloqueado: Completa los 5 Requisitos Arriba</span>
             </button>
           )}
         </div>

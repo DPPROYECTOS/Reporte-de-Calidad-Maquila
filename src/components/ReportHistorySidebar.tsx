@@ -16,9 +16,19 @@ import {
   CheckCircle2,
   AlertCircle,
   ShieldAlert,
+  FileSpreadsheet,
+  Send,
+  Loader2,
+  Filter,
 } from 'lucide-react';
 import { QualityReport, LotStatus } from '../types/qualityReport';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import {
+  clearOTSharepointStatus,
+  isOTExportedToSharepoint,
+  exportInspectionToSharepointExcel,
+  checkSharePointPokaYoke,
+} from '../utils/sharepointExport';
 
 interface ReportHistorySidebarProps {
   isOpen: boolean;
@@ -32,6 +42,7 @@ interface ReportHistorySidebarProps {
   onResetSamples: () => void;
   onSyncWithSupabase?: () => Promise<void>;
   isSyncing?: boolean;
+  onOpenSharepointModal?: () => void;
 }
 
 const REQUIRED_DELETE_PASSWORD = 'CVD_PMC_APP_CAL_01';
@@ -48,7 +59,12 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
   onResetSamples,
   onSyncWithSupabase,
   isSyncing = false,
+  onOpenSharepointModal,
 }) => {
+  // Filtro de SharePoint y estado de envío rápido
+  const [spFilter, setSpFilter] = useState<'all' | 'exported' | 'pending'>('all');
+  const [exportingReportId, setExportingReportId] = useState<string | null>(null);
+
   // Estado para confirmación de borrado
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
@@ -88,6 +104,8 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
   const [editForm, setEditForm] = useState<{
     folioOT: string;
     folioMaquila: string;
+    noMaquila: string;
+    noPedido: string;
     skuArmado: string;
     descripcionArmado: string;
     cliente: string;
@@ -97,6 +115,8 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
   }>({
     folioOT: '',
     folioMaquila: '',
+    noMaquila: '',
+    noPedido: '',
     skuArmado: '',
     descripcionArmado: '',
     cliente: '',
@@ -149,12 +169,12 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
       if (newUnlockedState) {
         setNotification({
           type: 'success',
-          message: '🔓 Botones de borrado HABILITADOS. Ya puedes eliminar reportes.',
+          message: '🔓 Botones de borrado y Central SP HABILITADOS.',
         });
       } else {
         setNotification({
           type: 'info',
-          message: '🔒 Botones de borrado DESHABILITADOS y protegidos.',
+          message: '🔒 Botones de borrado y Central SP DESHABILITADOS.',
         });
       }
     } else {
@@ -167,8 +187,10 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
     e.stopPropagation();
     setEditingReport(rep);
     setEditForm({
-      folioOT: rep.folioOT,
+      folioOT: rep.folioOT || '',
       folioMaquila: rep.folioMaquila || '',
+      noMaquila: rep.noMaquila || rep.folioMaquila || '',
+      noPedido: rep.noPedido || rep.folioOT || '',
       skuArmado: rep.skuArmado,
       descripcionArmado: rep.descripcionArmado || '',
       cliente: rep.cliente || '',
@@ -183,10 +205,15 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
     e.preventDefault();
     if (!editingReport || !onUpdateReport) return;
 
+    const cleanMaq = editForm.noMaquila.trim() || editForm.folioMaquila.trim();
+    const cleanPed = editForm.noPedido.trim() || editForm.folioOT.trim();
+
     const updated: QualityReport = {
       ...editingReport,
-      folioOT: editForm.folioOT.trim().toUpperCase(),
-      folioMaquila: editForm.folioMaquila.trim(),
+      noMaquila: cleanMaq,
+      noPedido: cleanPed,
+      folioOT: (cleanPed || editForm.folioOT.trim()).toUpperCase(),
+      folioMaquila: cleanMaq,
       skuArmado: editForm.skuArmado.trim().toUpperCase(),
       descripcionArmado: editForm.descripcionArmado.trim(),
       cliente: editForm.cliente.trim(),
@@ -200,9 +227,59 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
     setEditingReport(null);
     setNotification({
       type: 'success',
-      message: `Reporte ${updated.folioOT} actualizado en Supabase y memoria.`,
+      message: `Reporte ${cleanPed || cleanMaq || updated.folioOT} actualizado en Supabase y memoria.`,
     });
   };
+
+  // Envío rápido directo a SharePoint desde la tarjeta del historial
+  const handleQuickExportSharePoint = async (rep: QualityReport, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (exportingReportId) return;
+
+    const poka = checkSharePointPokaYoke(rep);
+    if (!poka.canExport) {
+      setNotification({
+        type: 'error',
+        message: `Poka-Yoke: ${poka.blockingMessage || 'Faltan datos obligatorios para exportar'}`,
+      });
+      return;
+    }
+
+    setExportingReportId(rep.id);
+    try {
+      const res = await exportInspectionToSharepointExcel(rep);
+      if (onUpdateReport) {
+        onUpdateReport({
+          ...rep,
+          sharepointExportedAt: new Date().toISOString(),
+          sharepointExportStatus: 'EXPORTADO',
+          sharepointExportMessage: res.message,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      setNotification({
+        type: 'success',
+        message: `✓ OT ${rep.noPedido || rep.folioOT} exportada con éxito a SharePoint.`,
+      });
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: err?.message || 'Error al exportar a SharePoint.',
+      });
+    } finally {
+      setExportingReportId(null);
+    }
+  };
+
+  const exportedCount = reports.filter((r) => r.sharepointExportStatus === 'EXPORTADO' || isOTExportedToSharepoint(r)).length;
+  const pendingCount = reports.length - exportedCount;
+
+  const displayReports = reports.filter((rep) => {
+    const isExp = rep.sharepointExportStatus === 'EXPORTADO' || isOTExportedToSharepoint(rep);
+    if (spFilter === 'exported') return isExp;
+    if (spFilter === 'pending') return !isExp;
+    return true;
+  });
 
   if (!isOpen) return null;
 
@@ -347,24 +424,92 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
           </button>
         </div>
 
+        {/* Sub-barra de Filtros de SharePoint y Acceso Rápido a Central */}
+        <div className="flex-none px-3 sm:px-3.5 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between gap-1.5 text-[11px] font-bold">
+          <div className="flex items-center space-x-1 overflow-x-auto py-0.5">
+            <button
+              type="button"
+              onClick={() => setSpFilter('all')}
+              className={`px-2 py-1 rounded-lg transition shrink-0 ${
+                spFilter === 'all'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Todos ({reports.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSpFilter('exported')}
+              className={`px-2 py-1 rounded-lg transition flex items-center space-x-1 shrink-0 ${
+                spFilter === 'exported'
+                  ? 'bg-teal-700 text-white shadow-xs'
+                  : 'text-teal-800 hover:bg-teal-100'
+              }`}
+            >
+              <span>☁️ SP</span>
+              <span className="font-mono text-[10px]">({exportedCount})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSpFilter('pending')}
+              className={`px-2 py-1 rounded-lg transition flex items-center space-x-1 shrink-0 ${
+                spFilter === 'pending'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-amber-800 hover:bg-amber-100'
+              }`}
+            >
+              <span>⏳ Pendientes</span>
+              <span className="font-mono text-[10px]">({pendingCount})</span>
+            </button>
+          </div>
+
+          {/* Botón Central SP: SOLO VISIBLE SI SE DESBLOQUEÓ EL MODO PROTEGIDO (AL IGUAL QUE LOS BOTONES DE BORRADO) */}
+          {onOpenSharepointModal && isDeleteUnlocked && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenSharepointModal();
+              }}
+              className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition flex items-center space-x-1 text-[10px] shrink-0 cursor-pointer shadow-xs active:scale-95 animate-in fade-in zoom-in-95 duration-150"
+              title="Abrir Central SharePoint (Poka-Yoke & Lotes)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Central SP</span>
+            </button>
+          )}
+        </div>
+
         {/* Reports List - Scrollable */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 sm:space-y-3 text-xs">
-          {reports.length === 0 ? (
+          {displayReports.length === 0 ? (
             <div className="text-center py-12 text-neutral-400 space-y-2">
               <FileText className="w-8 h-8 mx-auto text-neutral-300" />
-              <p className="font-serif italic text-sm">No hay reportes guardados.</p>
-              <button
-                onClick={onNewReport}
-                className="mt-2 text-xs font-bold text-amber-600 hover:text-amber-700 underline"
-              >
-                Crear primer reporte
-              </button>
+              <p className="font-serif italic text-sm">
+                {spFilter === 'exported'
+                  ? 'No hay reportes exportados a SharePoint aún.'
+                  : spFilter === 'pending'
+                  ? '¡Genial! No hay reportes pendientes de enviar.'
+                  : 'No hay reportes guardados.'}
+              </p>
+              {spFilter === 'all' && (
+                <button
+                  onClick={onNewReport}
+                  className="mt-2 text-xs font-bold text-amber-600 hover:text-amber-700 underline"
+                >
+                  Crear primer reporte
+                </button>
+              )}
             </div>
           ) : (
-            reports.map((rep) => {
+            displayReports.map((rep) => {
               const isActive = rep.id === activeReportId;
               const isApproved = rep.status === 'APROBADO';
               const isRejected = rep.status === 'RECHAZADO';
+              const isRepExported = rep.sharepointExportStatus === 'EXPORTADO' || isOTExportedToSharepoint(rep);
 
               return (
                 <div
@@ -383,8 +528,21 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
                     <div className="min-w-0 flex-1 pr-2">
                       <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                         <span className="font-mono font-black text-neutral-900 text-xs">
-                          {rep.folioOT || 'SIN FOLIO'}
+                          {rep.noPedido || rep.folioOT || 'SIN PEDIDO'}
                         </span>
+                        {(rep.noMaquila || rep.folioMaquila) && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md font-mono bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold">
+                            Maq: {rep.noMaquila || rep.folioMaquila}
+                          </span>
+                        )}
+                        {(rep.sharepointExportStatus === 'EXPORTADO' || isOTExportedToSharepoint(rep)) && (
+                          <span 
+                            className="text-[10px] px-1.5 py-0.5 rounded-md font-mono bg-teal-50 text-teal-800 border border-teal-300 font-bold"
+                            title={rep.sharepointExportedAt ? `Exportado a SharePoint el ${new Date(rep.sharepointExportedAt).toLocaleString()}` : 'Registrado en SharePoint'}
+                          >
+                            ☁️ SP
+                          </span>
+                        )}
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-full font-mono uppercase font-black ${
                             isApproved
@@ -409,6 +567,24 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
 
                     {/* Botones de acción en la tarjeta */}
                     <div className="flex items-center space-x-1 shrink-0">
+                      {/* Botón de exportación rápida a SharePoint si no está exportado */}
+                      {!isRepExported && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleQuickExportSharePoint(rep, e)}
+                          disabled={exportingReportId === rep.id}
+                          className="text-emerald-700 hover:text-emerald-950 p-1.5 rounded-lg hover:bg-emerald-100 bg-emerald-50/80 border border-emerald-300 transition cursor-pointer flex items-center space-x-1"
+                          title="Exportar a Excel SharePoint (Poka-Yoke)"
+                          aria-label="Exportar a SharePoint"
+                        >
+                          {exportingReportId === rep.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                          ) : (
+                            <Send className="w-3.5 h-3.5 text-emerald-700" />
+                          )}
+                        </button>
+                      )}
+
                       {/* Botón de edición rápida */}
                       <button
                         onClick={(e) => handleStartEdit(rep, e)}
@@ -431,7 +607,15 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
                               itemName: `${rep.folioOT || 'Sin Folio'} - ${rep.skuArmado || 'Sin SKU'}`,
                               message: `Este reporte con estatus ${rep.status} será eliminado permanentemente de la base de datos de Supabase y del historial local.`,
                               confirmText: 'Sí, borrar de Supabase',
-                              onConfirm: () => onDeleteReport(rep.id),
+                              onConfirm: () => {
+                                onDeleteReport(rep.id);
+                                if (rep.folioOT) {
+                                  clearOTSharepointStatus(rep.folioOT);
+                                }
+                                if (rep.folioMaquila) {
+                                  clearOTSharepointStatus(rep.folioMaquila);
+                                }
+                              },
                             });
                           }}
                           className="text-red-500 hover:text-white p-1.5 rounded-lg hover:bg-red-600 bg-red-50 border border-red-200 transition cursor-pointer"
@@ -599,27 +783,44 @@ export const ReportHistorySidebar: React.FC<ReportHistorySidebarProps> = ({
             <form onSubmit={handleSaveEdit} className="p-5 space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Folio OT
+                  <label className="block text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>1. No. Maquila</span>
+                    <span className="text-[9px] text-emerald-600 font-mono">REGISTRO</span>
                   </label>
                   <input
                     type="text"
-                    value={editForm.folioOT}
-                    onChange={(e) => setEditForm({ ...editForm, folioOT: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    value={editForm.noMaquila}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        noMaquila: e.target.value,
+                        folioMaquila: e.target.value,
+                      })
+                    }
+                    placeholder="Ej. 2779"
+                    className="w-full bg-emerald-50/40 border border-emerald-300 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Folio Maquila
+                  <label className="block text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>2. No. Pedido</span>
+                    <span className="text-[9px] text-blue-600 font-mono">EVIDENCIAS</span>
                   </label>
                   <input
                     type="text"
-                    value={editForm.folioMaquila}
-                    onChange={(e) => setEditForm({ ...editForm, folioMaquila: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    value={editForm.noPedido}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        noPedido: e.target.value,
+                        folioOT: e.target.value,
+                      })
+                    }
+                    placeholder="Ej. PED-2779"
+                    className="w-full bg-blue-50/40 border border-blue-300 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
                   />
                 </div>
               </div>

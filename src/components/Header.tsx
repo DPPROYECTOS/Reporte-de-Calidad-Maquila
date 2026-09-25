@@ -15,6 +15,10 @@ import {
   Archive,
   FileText,
   Download,
+  Loader2,
+  Lock,
+  RotateCcw,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -24,9 +28,14 @@ interface HeaderProps {
   onOpenQualityGuide?: () => void;
   onOpenAiAssist?: () => void;
   onOpenComboDefectsModal?: () => void;
-  onExportExcel: () => void;
+  onExportExcel?: () => void;
   onExportZipPackage?: () => void;
   onExportWord?: () => void;
+  onExportSharePoint?: () => void;
+  isExportingSharePoint?: boolean;
+  isSharePointExported?: boolean;
+  onUnlockSharePoint?: () => void;
+  onOpenSharePointModal?: () => void;
   onPrintLetter: () => void;
   onDownloadOfficialPdf?: () => void;
   isDownloadingPdf?: boolean;
@@ -52,6 +61,11 @@ export const Header: React.FC<HeaderProps> = ({
   onExportExcel,
   onExportZipPackage,
   onExportWord,
+  onExportSharePoint,
+  isExportingSharePoint,
+  isSharePointExported,
+  onUnlockSharePoint,
+  onOpenSharePointModal,
   onPrintLetter,
   onDownloadOfficialPdf,
   isDownloadingPdf,
@@ -310,42 +324,63 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Paquete ZIP (Opción A: Excel + PDF Carta + Word + Fotos) */}
-          {onExportZipPackage && (
-            <button
-              type="button"
-              onClick={onExportZipPackage}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-md shadow-blue-950/20 border border-blue-400/30 transition active:scale-95 cursor-pointer"
-              title="Descargar Paquete Completo (.ZIP) con Excel, Hoja Oficial PDF (Tamaño Carta), Informe Word y Carpeta de Fotos"
-            >
-              <Archive className="w-3.5 h-3.5 text-amber-300" />
-              <span className="hidden xs:inline">Paquete ZIP</span>
-            </button>
+          {/* SharePoint Excel Export (Power Automate Macro) - Único Botón Oficial */}
+          {onExportSharePoint && (
+            isSharePointExported ? (
+              <div className="flex items-center space-x-1.5">
+                <button
+                  type="button"
+                  disabled
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-neutral-800 border border-emerald-500/50 text-emerald-300 rounded-xl font-bold shadow-md cursor-not-allowed opacity-95"
+                  title="OT ya registrada en el Excel de SharePoint"
+                >
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden xs:inline">SharePoint (Registrado)</span>
+                  <span className="xs:hidden">Registrado</span>
+                </button>
+                {onUnlockSharePoint && (
+                  <button
+                    type="button"
+                    onClick={onUnlockSharePoint}
+                    className="flex items-center space-x-1 px-2 py-1 bg-amber-950/40 hover:bg-amber-950/80 border border-amber-500/40 text-amber-300 rounded-lg text-[10px] font-bold transition active:scale-95 cursor-pointer"
+                    title="Habilitar reenvío si se borró la fila en SharePoint"
+                  >
+                    <RotateCcw className="w-3 h-3 text-amber-400" />
+                    <span className="hidden sm:inline">Re-subir</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onExportSharePoint}
+                disabled={isExportingSharePoint}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#107c41] hover:bg-[#0e6b37] disabled:opacity-50 text-white rounded-xl font-bold shadow-md shadow-emerald-950/20 border border-emerald-400/40 transition active:scale-95 cursor-pointer"
+                title="Exportar información a Microsoft Excel Online SharePoint (CVD-CCA-F-08)"
+              >
+                {isExportingSharePoint ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+                )}
+                <span className="hidden xs:inline">Exportar a Excel SharePoint</span>
+                <span className="xs:hidden">SharePoint</span>
+              </button>
+            )
           )}
 
-          {/* Word Export */}
-          {onExportWord && (
+          {/* Botón para abrir la Central de Configuración y Auditoría SharePoint */}
+          {onOpenSharePointModal && (
             <button
               type="button"
-              onClick={onExportWord}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded-xl font-bold shadow-md shadow-indigo-950/20 border border-indigo-500/30 transition active:scale-95 cursor-pointer"
-              title="Descargar Informe Ejecutivo en Microsoft Word (.docx)"
+              onClick={onOpenSharePointModal}
+              className="p-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/50 text-emerald-200 rounded-xl font-bold transition active:scale-95 cursor-pointer"
+              title="Abrir Central SharePoint (Candados Poka-Yoke, Ping y Despacho Masivo)"
+              aria-label="Central SharePoint"
             >
-              <FileText className="w-3.5 h-3.5 text-indigo-200" />
-              <span className="hidden xs:inline">Word (.docx)</span>
+              <SlidersHorizontal className="w-3.5 h-3.5" />
             </button>
           )}
-
-          {/* Excel Export */}
-          <button
-            type="button"
-            onClick={onExportExcel}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow-md shadow-emerald-950/20 border border-emerald-400/30 transition active:scale-95"
-            title="Descargar Hoja de Cálculo Excel (.xlsx)"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span className="hidden xs:inline">Solo Excel</span>
-          </button>
 
           {/* Botón Descargar PDF Carta Oficial */}
           {onDownloadOfficialPdf && (

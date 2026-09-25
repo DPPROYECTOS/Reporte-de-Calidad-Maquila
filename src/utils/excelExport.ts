@@ -90,8 +90,8 @@ export function generateQualityReportWorkbook(report: QualityReport): XLSX.WorkB
   // HOJA 1: RESUMEN EJECUTIVO (Sin 'Cliente' ni 'Evidencia Fotográfica')
   // =========================================================================
   const executiveHeaders = [
-    'Pedido / Folio OT',
-    'Folio Maquila',
+    'No. Pedido (EVIDENCIAS)',
+    'No. Maquila (REGISTRO)',
     'Clave / SKU Armado',
     'Descripción del Producto',
     'Claves Componentes',
@@ -109,8 +109,8 @@ export function generateQualityReportWorkbook(report: QualityReport): XLSX.WorkB
   ];
 
   const executiveRow = [
-    report.folioOT || 'S/N',
-    report.folioMaquila || 'S/N',
+    report.noPedido || report.folioOT || 'S/N',
+    report.noMaquila || report.folioMaquila || 'S/N',
     report.skuArmado || 'S/N',
     report.descripcionArmado || '',
     report.claveCompuesta || (report.componentesArmado?.map((c) => c.sku).join('/') || 'N/A'),

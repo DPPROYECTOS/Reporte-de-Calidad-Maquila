@@ -318,6 +318,20 @@ export async function generateOfficialSheetPdfBlob(
               ${report.endTime || '11:21 a.m.'}
             </td>
           </tr>
+          <tr>
+            <td style="border: 1px solid ${tableBorder}; padding: ${padV}px ${padH}px; font-weight: bold; background-color: #ECFDF5; color: #065F46; text-transform: uppercase; font-size: ${szCellLabels}px; vertical-align: middle;">
+              NO. MAQUILA (REGISTRO):
+            </td>
+            <td style="border: 1px solid ${tableBorder}; padding: ${padV}px ${padH}px; font-family: monospace; font-weight: bold; color: #065F46; vertical-align: middle;">
+              ${report.noMaquila || report.folioMaquila || 'S/N'}
+            </td>
+            <td style="border: 1px solid ${tableBorder}; padding: ${padV}px ${padH}px; font-weight: bold; background-color: #EFF6FF; color: #1E40AF; text-transform: uppercase; font-size: ${szCellLabels}px; vertical-align: middle;">
+              NO. PEDIDO (EVIDENCIAS):
+            </td>
+            <td style="border: 1px solid ${tableBorder}; padding: ${padV}px ${padH}px; font-family: monospace; font-weight: bold; color: #1E40AF; vertical-align: middle;">
+              ${report.noPedido || report.folioOT || 'S/N'}
+            </td>
+          </tr>
         </table>
       </div>
 

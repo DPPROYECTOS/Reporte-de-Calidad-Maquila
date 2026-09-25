@@ -3,6 +3,32 @@ import { proxyDbGet, proxyDbPost, proxyDbPut, proxyDbDelete } from '../lib/supab
 
 export const INSPECTORS_STORAGE_KEY = 'cvdirecto_quality_inspectors_v1';
 export const PHOTO_SECTIONS_STORAGE_KEY = 'cvdirecto_photo_sections_config_v1';
+export const POWER_AUTOMATE_WEBHOOK_KEY = 'cvdirecto_power_automate_webhook_v1';
+
+export const DEFAULT_POWER_AUTOMATE_WEBHOOK_URL =
+  'https://defaultaa53848cce8346e7a4f67e95722c78.ff.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/18/workflows/35d1c54b65754de1a2305d5e10072d25/triggers/manual/paths/invoke?api-version=1';
+
+export function getStoredPowerAutomateWebhookUrl(): string {
+  if (typeof window === 'undefined') return DEFAULT_POWER_AUTOMATE_WEBHOOK_URL;
+  try {
+    const raw = localStorage.getItem(POWER_AUTOMATE_WEBHOOK_KEY);
+    if (raw && raw.trim().startsWith('http')) {
+      return raw.trim();
+    }
+  } catch (e) {
+    console.warn('Error al leer URL de Power Automate:', e);
+  }
+  return DEFAULT_POWER_AUTOMATE_WEBHOOK_URL;
+}
+
+export function saveStoredPowerAutomateWebhookUrl(url: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(POWER_AUTOMATE_WEBHOOK_KEY, url.trim());
+  } catch (e) {
+    console.warn('Error al guardar URL de Power Automate:', e);
+  }
+}
 
 export const DEFAULT_INSPECTORS: string[] = [
   'Ing. Carlos Mendoza (Calidad)',

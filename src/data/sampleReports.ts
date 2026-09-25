@@ -14,6 +14,8 @@ export const SAMPLE_REPORTS: QualityReport[] = [
     revisionDate: '2026-08-03',
     folioOT: 'OT-2420',
     folioMaquila: '2420',
+    noMaquila: '2420',
+    noPedido: 'PED-2420',
     
     inspectorName: 'Ing. Carlos Mendoza (Calidad)',
     inspectionDate: '2026-06-04',
@@ -85,6 +87,8 @@ export const SAMPLE_REPORTS: QualityReport[] = [
     revisionDate: '2026-08-03',
     folioOT: 'OT-2507',
     folioMaquila: '2507',
+    noMaquila: '2507',
+    noPedido: 'PED-2507',
 
     inspectorName: 'Lic. Laura Martínez (Calidad)',
     inspectionDate: '2026-06-22',

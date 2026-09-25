@@ -52,7 +52,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
     const setupCanvas = () => {
       const rect = canvas.getBoundingClientRect();
       const width = rect.width > 0 ? rect.width : (canvas.parentElement?.clientWidth || 320);
-      const height = rect.height > 0 ? rect.height : 112;
+      const height = rect.height > 0 ? rect.height : 192;
       canvas.width = width * 2;
       canvas.height = height * 2;
       ctx.scale(2, 2);
@@ -169,21 +169,21 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
       }`}
     >
       {/* Encabezado y Estado de la Firma */}
-      <div className="flex items-center justify-between gap-2">
-        <label className="text-[11px] font-black text-neutral-800 uppercase tracking-wider flex items-center space-x-1.5">
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <label className="text-[11px] font-black text-neutral-800 uppercase tracking-wider flex items-center space-x-1.5 min-w-0 flex-1">
           <PenLine className="w-3.5 h-3.5 text-neutral-600 shrink-0" />
           <span className="truncate">{label}</span>
         </label>
 
         {isCaptured ? (
-          <span className="bg-emerald-100 text-emerald-900 font-bold text-[10px] px-2 py-0.5 rounded-full flex items-center space-x-1 border border-emerald-300 shrink-0">
+          <span className="bg-emerald-100 text-emerald-900 font-bold text-[10px] px-2 py-0.5 rounded-full flex items-center space-x-1 border border-emerald-300 shrink-0 whitespace-nowrap">
             <Lock className="w-2.5 h-2.5 text-emerald-700" />
-            <span>Firmado y Bloqueado</span>
+            <span>Firmado</span>
           </span>
         ) : hasStrokes ? (
-          <span className="bg-amber-100 text-amber-900 font-bold text-[10px] px-2 py-0.5 rounded-full flex items-center space-x-1 border border-amber-300 shrink-0 animate-pulse">
+          <span className="bg-amber-100 text-amber-900 font-bold text-[10px] px-2 py-0.5 rounded-full flex items-center space-x-1 border border-amber-300 shrink-0 animate-pulse whitespace-nowrap">
             <Camera className="w-2.5 h-2.5 text-amber-700" />
-            <span>Pendiente de Capturar</span>
+            <span>Capturar</span>
           </span>
         ) : null}
       </div>
@@ -218,7 +218,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
           onTouchStart={startDrawing}
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
-          className={`w-full max-w-full h-28 bg-white block ${
+          className={`w-full max-w-full h-48 bg-white block ${
             isCaptured ? 'pointer-events-none opacity-90' : 'cursor-crosshair'
           }`}
         />

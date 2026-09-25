@@ -5,6 +5,8 @@ export interface QualityReportRow {
   id: string;
   folio_ot: string;
   folio_maquila?: string;
+  no_maquila?: string;
+  no_pedido?: string;
   sku_armado: string;
   descripcion_armado?: string;
   inspector_name: string;
@@ -37,8 +39,13 @@ export function reportToRow(report: QualityReport): QualityReportRow {
     }
   }
 
+  const cleanNoMaquila = (report.noMaquila || report.folioMaquila || report.folioOT || '').trim();
+  const cleanNoPedido = (report.noPedido || report.folioOT || report.folioMaquila || '').trim();
+
   const enrichedReport: QualityReport = {
     ...report,
+    noMaquila: cleanNoMaquila,
+    noPedido: cleanNoPedido,
     startTime,
     endTime,
     durationMinutes,
@@ -46,8 +53,10 @@ export function reportToRow(report: QualityReport): QualityReportRow {
 
   return {
     id: report.id,
-    folio_ot: report.folioOT || '',
-    folio_maquila: report.folioMaquila || '',
+    folio_ot: report.folioOT || cleanNoPedido || cleanNoMaquila,
+    folio_maquila: report.folioMaquila || cleanNoMaquila,
+    no_maquila: cleanNoMaquila,
+    no_pedido: cleanNoPedido,
     sku_armado: report.skuArmado || '',
     descripcion_armado: report.descripcionArmado || '',
     inspector_name: report.inspectorName || '',
@@ -70,7 +79,10 @@ export function rowToReport(row: QualityReportRow): QualityReport {
     return {
       ...row.data,
       id: row.id,
-      folioOT: row.folio_ot || row.data.folioOT,
+      folioOT: row.folio_ot || row.data.folioOT || row.no_pedido || '',
+      folioMaquila: row.folio_maquila || row.data.folioMaquila || row.no_maquila || '',
+      noMaquila: row.no_maquila || row.data.noMaquila || row.folio_maquila || row.data.folioMaquila || '',
+      noPedido: row.no_pedido || row.data.noPedido || row.folio_ot || row.data.folioOT || '',
       skuArmado: row.sku_armado || row.data.skuArmado,
       status: (row.status as any) || row.data.status,
       inspectorName: row.inspector_name || row.data.inspectorName,
@@ -87,8 +99,10 @@ export function rowToReport(row: QualityReportRow): QualityReport {
     folioCode: 'CVD-CCA-F-08',
     version: '00',
     revisionDate: '2026-08-03',
-    folioOT: row.folio_ot,
-    folioMaquila: row.folio_maquila || '',
+    folioOT: row.folio_ot || row.no_pedido || '',
+    folioMaquila: row.folio_maquila || row.no_maquila || '',
+    noMaquila: row.no_maquila || row.folio_maquila || '',
+    noPedido: row.no_pedido || row.folio_ot || '',
     inspectorName: row.inspector_name,
     inspectionDate: row.inspection_date,
     startTime: '08:00',

@@ -44,6 +44,8 @@ export interface QualityReport {
   revisionDate: string; // e.g. "2026-08-03"
   folioOT: string; // e.g. "OT-2420"
   folioMaquila: string; // e.g. "2420"
+  noMaquila?: string; // No. de Maquila oficial para pestaña REGISTRO (Tabla2) en SharePoint CVD-CCA-F-08
+  noPedido?: string; // No. de Pedido para pestaña EVIDENCIAS FOTOGRÁFICAS (Tabla1) en SharePoint CVD-CCA-F-08
   
   // General Data
   inspectorName: string;
@@ -126,6 +128,11 @@ export interface QualityReport {
     uploadedAt: string;
     filesCount: number;
   };
+
+  // Trazabilidad de exportación oficial hacia Microsoft SharePoint / Excel Online
+  sharepointExportedAt?: string;
+  sharepointExportStatus?: 'PENDIENTE' | 'EXPORTADO' | 'ERROR';
+  sharepointExportMessage?: string;
 
   updatedAt: string;
 }

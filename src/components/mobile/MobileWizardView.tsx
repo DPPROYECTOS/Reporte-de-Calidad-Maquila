@@ -5,6 +5,7 @@ import { MobileStep1LotSetup } from './MobileStep1LotSetup';
 import { MobileStep2Inspection } from './MobileStep2Inspection';
 import { MobileStep3Photos } from './MobileStep3Photos';
 import { MobileStep4Disposition } from './MobileStep4Disposition';
+import { MobileStep5SharePoint } from './MobileStep5SharePoint';
 import { 
   ClipboardList, 
   Search, 
@@ -29,6 +30,7 @@ import {
 
 interface MobileWizardViewProps {
   report: QualityReport;
+  allReports?: QualityReport[];
   onUpdateReport: (updated: QualityReport) => void;
   onNewReport: () => void;
   onOpenHistory: () => void;
@@ -45,6 +47,7 @@ interface MobileWizardViewProps {
 
 export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
   report,
+  allReports = [],
   onUpdateReport,
   onNewReport,
   onOpenHistory,
@@ -58,7 +61,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
   onOpenCatalogUpload,
   onOpenQualityConfig,
 }) => {
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [lockedStepAlert, setLockedStepAlert] = useState<string | null>(null);
   const [isConfirmNewModalOpen, setIsConfirmNewModalOpen] = useState<boolean>(false);
   const [showNewReportToast, setShowNewReportToast] = useState<boolean>(false);
@@ -71,16 +74,66 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
 
   const [catalogTapCount, setCatalogTapCount] = useState<number>(0);
   const catalogTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Estado para ocultar/mostrar el Paso 5 mediante 9 toques secretos (Oculto por defecto como las demás funciones secretas)
+  const [isStep5Visible, setIsStep5Visible] = useState<boolean>(false);
+  const [step5TapCount, setStep5TapCount] = useState<number>(0);
+  const step5TapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [step5UnlockToast, setStep5UnlockToast] = useState<string | null>(null);
+
   const topAnchorRef = useRef<HTMLDivElement>(null);
   const lastReportIdRef = useRef<string>(report.id);
 
   const [dbStatus, setDbStatus] = useState<{ online: boolean; message?: string } | null>(null);
 
   useEffect(() => {
+    // Asegurar que el Paso 5 comience oculto al cargar la app
+    try {
+      localStorage.removeItem('cvd_step5_visible');
+    } catch {}
+
     checkSupabaseStatus().then((res) => {
       setDbStatus({ online: res.online, message: res.message });
     });
   }, []);
+
+  useEffect(() => {
+    if (currentStep === 5 && !isStep5Visible) {
+      setCurrentStep(4);
+    }
+  }, [currentStep, isStep5Visible]);
+
+  // Activación oculta del Paso 5 (SharePoint Online) al presionar 9 veces
+  const handleStep5SecretTap = () => {
+    if (step5TapTimerRef.current) clearTimeout(step5TapTimerRef.current);
+    const next = step5TapCount + 1;
+    if (next >= 9) {
+      setStep5TapCount(0);
+      setIsStep5Visible(true);
+      try {
+        localStorage.setItem('cvd_step5_visible', 'true');
+      } catch {}
+      setStep5UnlockToast('🎉 ¡Paso 5 Habilitado! Acceso completo a Sincronización SharePoint Online y Lotes activado.');
+      setTimeout(() => setStep5UnlockToast(null), 6000);
+      return;
+    }
+    setStep5TapCount(next);
+    step5TapTimerRef.current = setTimeout(() => {
+      setStep5TapCount(0);
+    }, 5000);
+  };
+
+  const handleHideStep5 = () => {
+    setIsStep5Visible(false);
+    if (currentStep === 5) {
+      setCurrentStep(4);
+    }
+    try {
+      localStorage.setItem('cvd_step5_visible', 'false');
+    } catch {}
+    setStep5UnlockToast('🔒 Paso 5 ocultado nuevamente. Se requieren 9 toques para volver a mostrarlo.');
+    setTimeout(() => setStep5UnlockToast(null), 4000);
+  };
 
   // Activación de ventana de configuración de Inspectores y Fotos al presionar 9 veces el ESCUDO
   const handleShieldTap = () => {
@@ -159,7 +212,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     }
   }, [report.id]);
 
-  const handleStepChange = (newStep: 1 | 2 | 3 | 4) => {
+  const handleStepChange = (newStep: 1 | 2 | 3 | 4 | 5) => {
     setCurrentStep(newStep);
     scrollToTop();
   };
@@ -194,16 +247,31 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     hasPhotoSlot(report.photoReleasedPiece) &&
     hasPhotoSlot(report.photoPalletized);
 
+  const isStep4Complete = Boolean(
+    report.status &&
+    (report.firmaCalidad?.signatureDataUrl || report.firmaCalidad?.firmado)
+  );
+
   const isStepUnlocked = (stepNum: number): boolean => {
     if (stepNum === 1) return true;
     if (stepNum === 2) return isStep1Complete;
     if (stepNum === 3) return isStep1Complete && isStep2Complete;
     if (stepNum === 4) return isStep1Complete && isStep2Complete && isStep3Complete;
+    if (stepNum === 5) return isStep5Visible && isStep1Complete && isStep2Complete && isStep3Complete && isStep4Complete;
     return false;
   };
 
-  const handleStepClick = (targetStep: 1 | 2 | 3 | 4) => {
-    if (targetStep === currentStep) return;
+  const handleStepClick = (targetStep: 1 | 2 | 3 | 4 | 5) => {
+    if (targetStep === currentStep) {
+      if (targetStep === 4 && !isStep5Visible) {
+        handleStep5SecretTap();
+      }
+      return;
+    }
+
+    if (targetStep === 5 && !isStep5Visible) {
+      return;
+    }
 
     if (targetStep === 2 && !isStep1Complete) {
       setLockedStepAlert(
@@ -254,6 +322,27 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
       }
     }
 
+    if (targetStep === 5) {
+      if (!isStep1Complete) {
+        setLockedStepAlert('🔒 Candado Paso 5: Primero debes configurar la orden en el Paso 1.');
+        return;
+      }
+      if (!isStep2Complete) {
+        setLockedStepAlert('🔒 Candado Paso 5: Primero debes completar la revisión física en el Paso 2.');
+        return;
+      }
+      if (!isStep3Complete) {
+        setLockedStepAlert('🔒 Candado Paso 5: Faltan evidencias fotográficas en el Paso 3.');
+        return;
+      }
+      if (!isStep4Complete) {
+        setLockedStepAlert(
+          '🔒 Candado Paso 5: Primero debes emitir el dictamen (Aprobado/Rechazado) y registrar la firma digital del inspector en el Paso 4 antes de transmitir oficialmente a SharePoint.'
+        );
+        return;
+      }
+    }
+
     setLockedStepAlert(null);
     handleStepChange(targetStep);
   };
@@ -270,6 +359,9 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     { number: 2, label: '2. Revisión', sublabel: 'Muestreo', icon: Search, desc: 'Conteo de piezas' },
     { number: 3, label: '3. Fotos', sublabel: '4 Pruebas', icon: Camera, desc: '4 fotos obligatorias' },
     { number: 4, label: '4. Dictamen', sublabel: 'Firmar', icon: PenTool, desc: 'Resultado y firma' },
+    ...(isStep5Visible
+      ? [{ number: 5 as const, label: '5. SharePoint', sublabel: 'Oficial', icon: FileSpreadsheet, desc: 'Excel Online & Lotes' }]
+      : []),
   ];
 
   // Helper tips orientados a supervisores paso a paso (Alta legibilidad y contraste WCAG AAA)
@@ -287,7 +379,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
     }
   > = {
     1: {
-      tag: 'PASO 1 DE 4',
+      tag: isStep5Visible ? 'PASO 1 DE 5' : 'PASO 1 DE 4',
       title: 'Datos del Lote: Llena los 4 campos antes de avanzar',
       instruction: 'Selecciona tu nombre, la OT, el combo y la cantidad. La app calcula el muestreo en automático para ahorrarte cuentas; solo completa lo básico para que el sistema pueda abrir el Paso 2.',
       bg: 'bg-amber-50/90',
@@ -297,7 +389,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
       textColor: 'text-neutral-800',
     },
     2: {
-      tag: 'PASO 2 DE 4',
+      tag: isStep5Visible ? 'PASO 2 DE 5' : 'PASO 2 DE 4',
       title: 'Revisión Física: Observa las piezas antes de tocar la pantalla',
       instruction: 'Inspecciona la muestra física sobre la mesa. Si de verdad ninguna pieza tiene falla, confirma la muestra limpia abajo; si viste defectos, márcalos en su tarjeta en vez de ignorarlos.',
       bg: 'bg-sky-50/90',
@@ -307,7 +399,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
       textColor: 'text-neutral-800',
     },
     3: {
-      tag: 'PASO 3 DE 4',
+      tag: isStep5Visible ? 'PASO 3 DE 5' : 'PASO 3 DE 4',
       title: 'Evidencia Fotográfica: La cámara no adivina el producto',
       instruction: 'Captura las 4 evidencias nítidas enfocando el combo y la tarima (no el piso ni tus dedos). Son necesarias para comprobar que la inspección realmente se realizó.',
       bg: 'bg-purple-50/90',
@@ -317,19 +409,33 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
       textColor: 'text-neutral-800',
     },
     4: {
-      tag: 'PASO 4 DE 4',
+      tag: isStep5Visible ? 'PASO 4 DE 5' : 'PASO 4 DE 4',
       title: 'Dictamen y Firmas: El sistema ya calculó el resultado',
-      instruction: 'El dictamen AQL se determinó en automático según los defectos que reportaste. Tu única tarea restante es avalar con tu firma digital en el recuadro blanco y guardar.',
+      instruction: isStep5Visible
+        ? 'El dictamen AQL se determinó en automático según los defectos que reportaste. Avala con tu firma digital con el dedo en el recuadro para habilitar el envío oficial.'
+        : 'El dictamen AQL se determinó en automático según los defectos que reportaste. Avala con tu firma digital con el dedo en el recuadro blanco y guarda tu lote.',
       bg: 'bg-emerald-50/90',
       border: 'border-emerald-300',
       tagBadge: 'bg-emerald-100 text-emerald-950 border-emerald-300',
       titleColor: 'text-emerald-950',
       textColor: 'text-neutral-800',
     },
+    5: {
+      tag: 'PASO 5 DE 5',
+      title: 'Sincronización Oficial: SharePoint CVD-CCA-F-08',
+      instruction: 'Verifica la auditoría Poka-Yoke de 8 candados y transmite la orden oficial a las pestañas REGISTRO y EVIDENCIAS FOTOGRÁFICAS de Excel en SharePoint.',
+      bg: 'bg-teal-50/90',
+      border: 'border-teal-300',
+      tagBadge: 'bg-teal-100 text-teal-950 border-teal-300',
+      titleColor: 'text-teal-950',
+      textColor: 'text-neutral-800',
+    },
   };
 
-  const currentGuide = stepGuides[currentStep];
-  const progressPercentage = currentStep === 1 ? 25 : currentStep === 2 ? 50 : currentStep === 3 ? 75 : 100;
+  const currentGuide = stepGuides[currentStep] || stepGuides[1];
+  const progressPercentage = isStep5Visible
+    ? (currentStep / 5) * 100
+    : (currentStep / 4) * 100;
 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900 pb-12 font-sans">
@@ -379,9 +485,17 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
 
               <div className="min-w-0">
                 <div className="flex items-center space-x-1.5">
-                  <h1 className="font-black text-xs sm:text-sm text-white tracking-wide truncate">
-                    CALIDAD MAQUILA
-                  </h1>
+                  <button
+                    type="button"
+                    onClick={handleStep5SecretTap}
+                    className={`font-black text-xs sm:text-sm tracking-wide truncate text-left transition select-none cursor-pointer ${
+                      step5TapCount > 0 ? 'text-amber-300 font-extrabold animate-pulse' : 'text-white hover:text-emerald-300'
+                    }`}
+                    title="Presiona 9 veces consecutivas para revelar el Paso 5: SharePoint"
+                    aria-label="Título Calidad Maquila"
+                  >
+                    CALIDAD MAQUILA {step5TapCount > 0 ? `(${step5TapCount}/9)` : ''}
+                  </button>
                   <button
                     type="button"
                     onClick={handleCalidadTap}
@@ -480,9 +594,9 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
             </div>
           </div>
 
-          {/* Fila 2: 4 Pasos Guiados Compactos + Barra de Progreso Integrada */}
+          {/* Fila 2: Pasos Guiados Compactos + Barra de Progreso Integrada */}
           <div>
-            <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
+            <div className={`grid ${isStep5Visible ? 'grid-cols-5' : 'grid-cols-4'} gap-1 sm:gap-1.5`}>
               {steps.map((step) => {
                 const Icon = step.icon;
                 const isActive = currentStep === step.number;
@@ -631,7 +745,7 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
       {/* Contenido Principal con Contenedor Responsivo para Celular y Tablet */}
       <main className="w-full max-w-lg sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto p-3 sm:p-5 pt-2 sm:pt-3 overflow-x-hidden">
         {/* Notificaciones flotantes de toques secretos si están activos */}
-        {(shieldTapCount > 0 || calidadTapCount > 0 || catalogTapCount > 0) && (
+        {(shieldTapCount > 0 || calidadTapCount > 0 || catalogTapCount > 0 || step5TapCount > 0) && (
           <div className="mb-2.5 p-2 bg-slate-900 text-white rounded-xl border border-amber-400 text-[11px] font-bold flex items-center justify-between">
             {shieldTapCount > 0 && (
               <span>🛡️ Configuración: {shieldTapCount}/9 toques (faltan {9 - shieldTapCount})</span>
@@ -642,13 +756,37 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
             {catalogTapCount > 0 && (
               <span>📦 Catálogo Excel: {catalogTapCount}/9 toques (faltan {9 - catalogTapCount})</span>
             )}
+            {step5TapCount > 0 && (
+              <span>☁️ Paso 5 SharePoint: {step5TapCount}/9 toques (faltan {9 - step5TapCount})</span>
+            )}
           </div>
+        )}
+
+        {/* Notificación de Paso 5 desbloqueado / ocultado */}
+        {step5UnlockToast && (
+          <aside
+            role="status"
+            aria-label="Notificación de Paso 5"
+            className="mb-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-between shadow-lg border border-emerald-400 animate-in slide-in-from-top duration-200"
+          >
+            <div className="flex items-center space-x-2">
+              <span>✨</span>
+              <span>{step5UnlockToast}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStep5UnlockToast(null)}
+              className="text-white hover:bg-white/20 p-1 rounded-md text-xs font-black cursor-pointer"
+            >
+              ✕
+            </button>
+          </aside>
         )}
 
         {/* Tarjeta Guía del Paso Actual (Alta legibilidad y contraste en cualquier pantalla) */}
         <div className={`mb-3.5 px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-2xl border-2 flex items-start space-x-2.5 text-left shadow-xs transition-all ${currentGuide.bg} ${currentGuide.border}`}>
           <span className="text-base sm:text-lg shrink-0 select-none mt-0.5">
-            {currentStep === 1 ? '📋' : currentStep === 2 ? '🔍' : currentStep === 3 ? '📸' : '✍️'}
+            {currentStep === 1 ? '📋' : currentStep === 2 ? '🔍' : currentStep === 3 ? '📸' : currentStep === 4 ? '✍️' : '☁️'}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
@@ -716,10 +854,27 @@ export const MobileWizardView: React.FC<MobileWizardViewProps> = ({
             report={report}
             onUpdateReport={onUpdateReport}
             onPrevStep={() => handleStepChange(3)}
+            onNextStep={isStep5Visible ? () => handleStepChange(5) : undefined}
+            isStep5Visible={isStep5Visible}
+            onSecretTapStep5={handleStep5SecretTap}
+            step5TapCount={step5TapCount}
             onNewReport={() => setIsConfirmNewModalOpen(true)}
             onOpenAiAssist={onOpenAiAssist}
             onExportExcel={onExportExcel}
             onSwitchToDesktopView={onSwitchToDesktopView}
+          />
+        )}
+
+        {/* PASO 5: SINCRONIZACIÓN SHAREPOINT ONLINE Y LOTES (DESBLOQUEABLE CON 9 TOQUES) */}
+        {currentStep === 5 && isStep5Visible && (
+          <MobileStep5SharePoint
+            report={report}
+            allReports={allReports}
+            onUpdateReport={onUpdateReport}
+            onPrevStep={() => handleStepChange(4)}
+            onNewReport={() => setIsConfirmNewModalOpen(true)}
+            onOpenQualityConfig={onOpenQualityConfig}
+            onHideStep5={handleHideStep5}
           />
         )}
       </main>

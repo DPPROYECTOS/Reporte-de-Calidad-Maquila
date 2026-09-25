@@ -6,6 +6,14 @@ import { calculateAQLPlan } from './utils/aqlTable';
 import { exportReportToExcel, exportInspectionPackageZip } from './utils/excelExport';
 import { generateInspectionWordDocument } from './utils/wordExport';
 import { downloadOfficialSheetPdf } from './utils/officialSheetPdfExport';
+import {
+  exportInspectionToSharepointExcel,
+  SharePointExportResult,
+  clearOTSharepointStatus,
+  isOTExportedToSharepoint,
+  deleteInspectionFromSharepoint,
+  checkSharePointPokaYoke,
+} from './utils/sharepointExport';
 
 import { Header } from './components/Header';
 import { ExcelGridReport } from './components/ExcelGridReport';
@@ -19,6 +27,7 @@ import { ReportHistorySidebar } from './components/ReportHistorySidebar';
 import { TemplateConfigModal } from './components/TemplateConfigModal';
 import { CatalogUploadModal } from './components/CatalogUploadModal';
 import { QualityConfigModal } from './components/QualityConfigModal';
+import { SharePointSyncModal } from './components/SharePointSyncModal';
 import { SheetTemplateConfig, DEFAULT_TEMPLATE_CONFIG } from './types/templateConfig';
 import {
   getStoredTemplateConfig,
@@ -80,6 +89,7 @@ export default function App() {
   const [isPrintMode, setIsPrintMode] = useState<boolean>(false);
   const [isCatalogUploadOpen, setIsCatalogUploadOpen] = useState<boolean>(false);
   const [isQualityConfigOpen, setIsQualityConfigOpen] = useState<boolean>(false);
+  const [isSharePointModalOpen, setIsSharePointModalOpen] = useState<boolean>(false);
 
   // Keyboard shortcut to open hidden catalog upload (Ctrl+Shift+C or Alt+C)
   useEffect(() => {
@@ -277,6 +287,8 @@ export default function App() {
       revisionDate: today,
       folioOT: '', // En blanco: la supervisora debe ingresarlo manual
       folioMaquila: '',
+      noMaquila: '', // Pestaña REGISTRO (Tabla2) en SharePoint CVD-CCA-F-08
+      noPedido: '', // Pestaña EVIDENCIAS FOTOGRÁFICAS (Tabla1) en SharePoint CVD-CCA-F-08
 
       inspectorName: '', // En blanco: la supervisora debe seleccionarse o escribirse
       inspectionDate: today,
@@ -347,6 +359,11 @@ export default function App() {
   };
 
   const handleDeleteReport = (id: string) => {
+    const targetReport = reports.find((r) => r.id === id);
+    if (targetReport) {
+      if (targetReport.folioOT) clearOTSharepointStatus(targetReport.folioOT);
+      if (targetReport.folioMaquila) clearOTSharepointStatus(targetReport.folioMaquila);
+    }
     const filtered = reports.filter((r) => r.id !== id);
     setReports(filtered);
     if (activeReportId === id && filtered.length > 0) {
@@ -462,6 +479,87 @@ export default function App() {
     }
   };
 
+  // Exportar a Excel SharePoint vía Power Automate desde vista Escritorio
+  const [isExportingSharePointDesktop, setIsExportingSharePointDesktop] = useState(false);
+  const [sharePointNotification, setSharePointNotification] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    details?: string;
+  } | null>(null);
+
+  const handleExportSharePoint = async () => {
+    if (!activeReport) return;
+
+    // Validación Poka-Yoke previa a cualquier envío
+    const poka = checkSharePointPokaYoke(activeReport);
+    if (!poka.canExport) {
+      setSharePointNotification({
+        type: 'error',
+        message: 'Candado Poka-Yoke Activo',
+        details: poka.blockingMessage || 'Faltan requisitos obligatorios para registrar en SharePoint.',
+      });
+      setIsSharePointModalOpen(true);
+      return;
+    }
+
+    setIsExportingSharePointDesktop(true);
+    setSharePointNotification(null);
+    try {
+      const res = await exportInspectionToSharepointExcel(activeReport);
+      const updated: QualityReport = {
+        ...activeReport,
+        sharepointExportedAt: new Date().toISOString(),
+        sharepointExportStatus: 'EXPORTADO',
+        sharepointExportMessage: res.message,
+        updatedAt: new Date().toISOString(),
+      };
+      handleUpdateReport(updated);
+
+      setSharePointNotification({
+        type: 'success',
+        message: '¡Exportado con éxito a Excel SharePoint (CVD-CCA-F-08)!',
+        details: `Pestaña REGISTRO (Tabla2) actualizada (Maquila: ${res.payload.numeroMaquila}) y EVIDENCIAS (Tabla1) registrada (Pedido: ${res.payload.numeroPedido}).`,
+      });
+      setTimeout(() => setSharePointNotification(null), 7000);
+    } catch (err: any) {
+      console.error('Error al exportar a SharePoint:', err);
+      setSharePointNotification({
+        type: 'error',
+        message: 'Error al exportar a SharePoint',
+        details: err?.message || 'Verifica la conexión a Power Automate.',
+      });
+    } finally {
+      setIsExportingSharePointDesktop(false);
+    }
+  };
+
+  const handleUnlockSharePoint = async () => {
+    if (!activeReport) return;
+    try {
+      await deleteInspectionFromSharepoint(activeReport);
+      const updated: QualityReport = {
+        ...activeReport,
+        sharepointExportedAt: undefined,
+        sharepointExportStatus: 'PENDIENTE',
+        sharepointExportMessage: undefined,
+        updatedAt: new Date().toISOString(),
+      };
+      handleUpdateReport(updated);
+      setSharePointNotification({
+        type: 'success',
+        message: 'OT Desbloqueada',
+        details: 'Se ha restablecido el estado para permitir un reenvío limpio.',
+      });
+      setTimeout(() => setSharePointNotification(null), 5000);
+    } catch (err: any) {
+      setSharePointNotification({
+        type: 'error',
+        message: 'Error al desbloquear',
+        details: err?.message,
+      });
+    }
+  };
+
   if (!activeReport) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
@@ -475,6 +573,7 @@ export default function App() {
       <div className="min-h-screen bg-neutral-100 font-sans">
         <MobileWizardView
           report={activeReport}
+          allReports={reports}
           onUpdateReport={handleUpdateReport}
           onNewReport={handleNewReport}
           onOpenHistory={() => setIsHistoryOpen(true)}
@@ -502,6 +601,15 @@ export default function App() {
           onResetSamples={handleResetSamples}
           onSyncWithSupabase={handleSyncReportsWithSupabase}
           isSyncing={isSyncingReports}
+          onOpenSharepointModal={() => setIsSharePointModalOpen(true)}
+        />
+
+        <SharePointSyncModal
+          isOpen={isSharePointModalOpen}
+          onClose={() => setIsSharePointModalOpen(false)}
+          report={activeReport}
+          allReports={reports}
+          onUpdateReport={handleUpdateReport}
         />
 
         <AqlCalculatorModal
@@ -588,6 +696,11 @@ export default function App() {
         onExportExcel={handleExportExcel}
         onExportZipPackage={handleExportZipPackage}
         onExportWord={handleExportWord}
+        onExportSharePoint={handleExportSharePoint}
+        isExportingSharePoint={isExportingSharePointDesktop}
+        isSharePointExported={isOTExportedToSharepoint(activeReport)}
+        onUnlockSharePoint={handleUnlockSharePoint}
+        onOpenSharePointModal={() => setIsSharePointModalOpen(true)}
         onPrintLetter={handlePrintLetter}
         onDownloadOfficialPdf={handleDownloadOfficialPdf}
         isDownloadingPdf={isDownloadingPdf}
@@ -605,6 +718,36 @@ export default function App() {
         onOpenQualityConfig={() => setIsQualityConfigOpen(true)}
         documentCode={templateConfig.documentCode}
       />
+
+      {/* Notificación Flotante de Exportación a SharePoint */}
+      {sharePointNotification && (
+        <div className="fixed top-16 right-4 z-50 max-w-md animate-in slide-in-from-top-3 shadow-2xl">
+          <div
+            className={`p-4 rounded-2xl text-white border-2 flex items-start space-x-3 ${
+              sharePointNotification.type === 'success'
+                ? 'bg-emerald-950/95 border-emerald-500 shadow-emerald-950/50'
+                : 'bg-red-950/95 border-red-500 shadow-red-950/50'
+            }`}
+          >
+            <div className="flex-1 text-xs">
+              <h4 className="font-black text-sm uppercase tracking-wide">
+                {sharePointNotification.message}
+              </h4>
+              {sharePointNotification.details && (
+                <p className="mt-1 text-[11px] text-neutral-200 leading-relaxed">
+                  {sharePointNotification.details}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setSharePointNotification(null)}
+              className="text-neutral-400 hover:text-white p-1"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area - Letter Size Canvas */}
       <main className="flex-1">
@@ -640,6 +783,15 @@ export default function App() {
         onResetSamples={handleResetSamples}
         onSyncWithSupabase={handleSyncReportsWithSupabase}
         isSyncing={isSyncingReports}
+        onOpenSharepointModal={() => setIsSharePointModalOpen(true)}
+      />
+
+      <SharePointSyncModal
+        isOpen={isSharePointModalOpen}
+        onClose={() => setIsSharePointModalOpen(false)}
+        report={activeReport}
+        allReports={reports}
+        onUpdateReport={handleUpdateReport}
       />
 
       <AqlCalculatorModal
