@@ -27,11 +27,13 @@ import {
   X,
   Lock,
   RefreshCw,
-  Trash2
+  Trash2,
+  Key
 } from 'lucide-react';
 import { exportInspectionPackageZip } from '../../utils/excelExport';
 import { generateInspectionWordDocument } from '../../utils/wordExport';
 import { detectDeviceEnvironment } from '../../utils/deviceEnvironment';
+import { PowerAutomateHelpModal } from '../PowerAutomateHelpModal';
 import { 
   exportInspectionToSharepointExcel, 
   deleteInspectionFromSharepoint,
@@ -44,7 +46,9 @@ import {
   PokaYokeCheckSummary,
   getInspectionLocalPackageFileName,
   isOTExportedToSharepoint,
-  clearOTSharepointStatus
+  clearOTSharepointStatus,
+  isDirectApiAuthError,
+  isPowerAutomateMissingSig
 } from '../../utils/sharepointExport';
 import { 
   getStoredPowerAutomateWebhookUrl, 
@@ -99,6 +103,7 @@ export const MobileStep4Disposition: React.FC<MobileStep4DispositionProps> = ({
   const [sharepointError, setSharepointError] = useState<string | null>(null);
   const [sharepointActionNotice, setSharepointActionNotice] = useState<string | null>(null);
   const [showSharepointConfigModal, setShowSharepointConfigModal] = useState(false);
+  const [showPowerAutomateHelpModal, setShowPowerAutomateHelpModal] = useState(false);
   const [webhookUrlInput, setWebhookUrlInput] = useState(() => getStoredPowerAutomateWebhookUrl());
   const [webhookSavedMsg, setWebhookSavedMsg] = useState(false);
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
@@ -798,30 +803,84 @@ _Generado con Sistema de Inspección de Calidad Maquila_`;
 
         {/* ERROR DE SHAREPOINT */}
         {sharepointError && (
-          <div className="bg-red-950/90 border-2 border-red-500 text-white p-3.5 rounded-xl space-y-2 animate-in fade-in">
+          <div className="bg-red-950/90 border-2 border-red-500 text-white p-3.5 rounded-xl space-y-2.5 animate-in fade-in shadow-xl">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2 text-red-300 font-bold text-xs">
                 <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
-                <span>Error al exportar a SharePoint:</span>
+                <span>
+                  {isDirectApiAuthError(sharepointError)
+                    ? 'Falta Autorización en Power Automate (Error 401)'
+                    : 'Error al exportar a SharePoint:'}
+                </span>
               </div>
               <button
                 type="button"
+                onClick={() => setSharepointError(null)}
+                className="text-neutral-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {isDirectApiAuthError(sharepointError) ? (
+              <div className="bg-slate-900 border border-amber-500/50 rounded-xl p-3 space-y-2 text-xs">
+                <div className="flex items-start space-x-2 text-amber-300 font-bold text-[11.5px]">
+                  <Key className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                  <span>¿Por qué ocurrió y cómo solucionarlo en 1 minuto?</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Power Automate rechazó el envío con <strong className="text-red-300 font-mono">DirectApiAuthorizationRequired</strong> porque la URL requiere firma pública (&sig=...) o está restringida solo a usuarios internos.
+                </p>
+                <div className="p-2 bg-slate-950 rounded-lg border border-slate-800 text-[10.5px] text-slate-300 space-y-1">
+                  <p>1. En Power Automate, abre el primer bloque <strong>"Al recibir una solicitud HTTP"</strong>.</p>
+                  <p>2. Cambia <strong>"¿Quién puede desencadenar el flujo?"</strong> a <span className="text-emerald-300 font-bold">"Cualquiera" (Anyone)</span>.</p>
+                  <p>3. Guarda el flujo y copia la nueva <strong>URL de HTTP POST</strong> completa (que termina con <code className="text-emerald-300">&sig=...</code>).</p>
+                </div>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowPowerAutomateHelpModal(true)}
+                    className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-500 active:scale-98 text-white font-black text-xs rounded-lg transition shadow flex items-center justify-center space-x-1.5 cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Ver Guía Paso a Paso y Pegar Nueva URL</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-red-200 bg-neutral-950/80 p-2.5 rounded border border-red-900/60 font-mono">
+                {sharepointError}
+              </p>
+            )}
+
+            <div className="flex items-center space-x-2 pt-1">
+              <button
+                type="button"
+                onClick={handleExportToSharepoint}
+                disabled={isExportingSharepoint}
+                className="flex-1 py-2 bg-red-800 hover:bg-red-700 active:scale-98 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center justify-center space-x-1.5"
+              >
+                {isExportingSharepoint ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Reintentando...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Reintentar Exportación</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowSharepointConfigModal(true)}
-                className="text-[10px] underline text-red-300 hover:text-white cursor-pointer"
+                className="py-2 px-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold rounded-lg border border-neutral-700 transition cursor-pointer"
               >
                 Revisar URL
               </button>
             </div>
-            <p className="text-[11px] text-red-200 bg-neutral-950/80 p-2.5 rounded border border-red-900/60">
-              {sharepointError}
-            </p>
-            <button
-              type="button"
-              onClick={handleExportToSharepoint}
-              className="w-full py-2 bg-red-800 hover:bg-red-700 active:scale-98 text-white text-xs font-bold rounded-lg transition cursor-pointer"
-            >
-              Reintentar Exportación
-            </button>
           </div>
         )}
       </div>
@@ -1007,6 +1066,29 @@ _Generado con Sistema de Inspección de Calidad Maquila_`;
                 <span className="text-[10px] text-neutral-400 block">
                   Esta es la URL del disparador "Cuando se recibe una solicitud HTTP" en tu flujo.
                 </span>
+
+                {/* Validación Poka-Yoke de firma SAS */}
+                {isPowerAutomateMissingSig(webhookUrlInput) && (
+                  <div className="bg-amber-950/50 border border-amber-500/50 text-amber-200 p-2.5 rounded-xl text-[11px] space-y-1">
+                    <p className="font-bold flex items-center space-x-1 text-amber-300">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Atención: A esta URL le falta el parámetro &sig=...</span>
+                    </p>
+                    <p className="text-[10px] text-amber-200/90 leading-tight">
+                      En Power Automate, asegúrate de cambiar <em>"¿Quién puede desencadenar el flujo?"</em> a <strong>"Cualquiera" (Anyone)</strong> para generar la URL pública con firma de acceso (SAS).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSharepointConfigModal(false);
+                        setShowPowerAutomateHelpModal(true);
+                      }}
+                      className="text-[10px] underline text-cyan-300 hover:text-cyan-200 cursor-pointer pt-0.5 block font-bold"
+                    >
+                      Ver cómo solucionarlo paso a paso →
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 space-y-2 text-[11px]">
@@ -1219,6 +1301,16 @@ _Generado con Sistema de Inspección de Calidad Maquila_`;
           )}
         </div>
       </div>
+
+      {/* MODAL DE AYUDA Y CONFIGURACIÓN RÁPIDA PARA ERROR 401 POWER AUTOMATE */}
+      <PowerAutomateHelpModal
+        isOpen={showPowerAutomateHelpModal}
+        onClose={() => setShowPowerAutomateHelpModal(false)}
+        onUrlUpdated={(newUrl) => {
+          setWebhookUrlInput(newUrl);
+          setSharepointError(null);
+        }}
+      />
     </div>
   );
 };

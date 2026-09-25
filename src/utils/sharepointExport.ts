@@ -297,6 +297,77 @@ export function getInspectionLocalPackageFileName(report: QualityReport): string
 }
 
 /**
+ * Comprueba si a una URL de Power Automate o Logic Apps le falta la firma compartida (&sig=...).
+ */
+export function isPowerAutomateMissingSig(url?: string): boolean {
+  if (!url || !url.trim().startsWith('http')) return false;
+  const isCloudTrigger =
+    url.includes('powerplatform.com') ||
+    url.includes('logic.azure.com') ||
+    url.includes('/triggers/manual/paths/invoke');
+  if (isCloudTrigger) {
+    return !url.includes('sig=');
+  }
+  return false;
+}
+
+/**
+ * Detecta si el error corresponde al fallo de autenticación de Power Automate (Error 401 / DirectApiAuthorizationRequired).
+ */
+export function isDirectApiAuthError(errorStr?: string | null): boolean {
+  if (!errorStr) return false;
+  return (
+    errorStr.includes('DirectApiAuthorizationRequired') ||
+    errorStr.includes('Shared access signature is required') ||
+    errorStr.includes('401') ||
+    errorStr.includes('Falta la firma pública')
+  );
+}
+
+/**
+ * Formatea y traduce los errores técnicos devueltos por Power Automate a explicaciones claras y soluciones accionables.
+ */
+export function formatSharePointErrorMessage(status: number, rawDetail: string): string {
+  const isDirectAuth =
+    status === 401 ||
+    rawDetail.includes('DirectApiAuthorizationRequired') ||
+    rawDetail.includes('Shared access signature');
+
+  if (isDirectAuth) {
+    return (
+      'Error 401 (DirectApiAuthorizationRequired): Power Automate rechazó la petición porque a la URL le falta la firma pública (Shared Access Signature / &sig=...). ' +
+      'SOLUCIÓN: En Power Automate, entra a tu flujo, abre el desencadenador "Al recibir una solicitud HTTP", cambia "¿Quién puede desencadenar el flujo?" a "Cualquiera" (Anyone), haz clic en Guardar y copia la nueva URL completa.'
+    );
+  }
+
+  if (status === 404) {
+    return (
+      'Error 404 (No encontrado): La URL de Power Automate no existe o el flujo fue eliminado. Verifica la URL configurada.'
+    );
+  }
+
+  if (status === 403) {
+    return (
+      'Error 403 (Acceso Denegado): El flujo de Power Automate no tiene permisos para escribir en el archivo de Excel en SharePoint o la cuenta no tiene permisos suficientes.'
+    );
+  }
+
+  if (status === 429) {
+    return (
+      'Error 429 (Límite de solicitudes excedido): Se han enviado demasiadas solicitudes a Power Automate. Espera unos instantes antes de reintentar.'
+    );
+  }
+
+  if (status >= 500) {
+    return (
+      `Error de servidor en Power Automate (${status}): El flujo falló internamente durante la ejecución en la nube. Revisa el historial de ejecuciones en Power Automate para ver el detalle.`
+    );
+  }
+
+  return `Power Automate devolvió un error (${status}): ${rawDetail || 'No se pudo completar la operación en SharePoint'}`;
+}
+
+/**
  * Evalúa los candados Poka-Yoke y normas de calidad (ISO 9001, AQL) para la exportación a SharePoint.
  */
 export function checkSharePointPokaYoke(report: QualityReport): PokaYokeCheckSummary {
@@ -387,10 +458,12 @@ export function checkSharePointPokaYoke(report: QualityReport): PokaYokeCheckSum
       id: 'webhook_url',
       title: 'Conexión Webhook Power Automate',
       category: 'CONEXION',
-      passed: Boolean(webhookUrl && webhookUrl.startsWith('http')),
-      message: Boolean(webhookUrl && webhookUrl.startsWith('http'))
-        ? 'Webhook de SharePoint configurado y activo'
-        : 'No se ha configurado la URL del Webhook de Power Automate en los ajustes.',
+      passed: Boolean(webhookUrl && webhookUrl.startsWith('http') && !isPowerAutomateMissingSig(webhookUrl)),
+      message: !webhookUrl || !webhookUrl.startsWith('http')
+        ? 'No se ha configurado la URL del Webhook de Power Automate en los ajustes.'
+        : isPowerAutomateMissingSig(webhookUrl)
+        ? '⚠️ A la URL le falta la clave pública (&sig=...). En Power Automate cambia "¿Quién puede desencadenar el flujo?" a "Cualquiera" (Anyone) para obtener la firma.'
+        : 'Webhook de SharePoint configurado y con firma válida',
     },
     {
       id: 'anti_duplicados',
@@ -403,8 +476,9 @@ export function checkSharePointPokaYoke(report: QualityReport): PokaYokeCheckSum
     },
   ];
 
+  const hasMissingSig = isPowerAutomateMissingSig(webhookUrl);
   const passedCount = rules.filter((r) => r.passed).length;
-  const canExport = !isAlreadyExported && Boolean(cleanMaquila) && Boolean(cleanPedido) && hasQualitySig && hasSku && Boolean(webhookUrl);
+  const canExport = !isAlreadyExported && Boolean(cleanMaquila) && Boolean(cleanPedido) && hasQualitySig && hasSku && Boolean(webhookUrl) && !hasMissingSig;
 
   let blockingMessage: string | undefined;
   if (isAlreadyExported) {
@@ -417,6 +491,8 @@ export function checkSharePointPokaYoke(report: QualityReport): PokaYokeCheckSum
     blockingMessage = 'Falta la firma del Inspector de Calidad en el Paso 4 (Norma ISO 9001).';
   } else if (!webhookUrl) {
     blockingMessage = 'Configura la URL de Webhook de SharePoint en el engrane superior.';
+  } else if (hasMissingSig) {
+    blockingMessage = 'A la URL de Power Automate le falta la firma (&sig=...). En Power Automate, configura "¿Quién puede desencadenar el flujo?: Cualquiera" para generar la URL completa.';
   } else if (!hasSku) {
     blockingMessage = 'Falta la clave SKU del producto inspeccionado.';
   }
@@ -458,23 +534,24 @@ export function buildSharePointPayload(report: QualityReport): SharePointExportP
     ? 'Sin observaciones de calidad.'
     : `Dictamen: ${report.status}. Se registraron defectos en la inspección.`;
 
-  // Muestra inspeccionada
-  const muestra = Number(report.sampleSizeInspected || report.sampleSizeRequired || 0);
+  // Muestra inspeccionada (garantizado entero integer para el esquema de Power Automate)
+  const rawMuestra = Number(report.sampleSizeInspected || report.sampleSizeRequired || 0);
+  const muestra = Number.isFinite(rawMuestra) ? Math.round(rawMuestra) : 0;
 
   const localPackageName = getInspectionLocalPackageFileName(report);
 
   return {
     accion: 'REGISTRAR',
-    folioOT: cleanOT,
-    numeroMaquila: cleanMaquila,
-    numeroPedido: cleanPedido,
-    fecha: formattedDate,
+    folioOT: cleanOT || '',
+    numeroMaquila: cleanMaquila || '',
+    numeroPedido: cleanPedido || '',
+    fecha: formattedDate || '',
     claveArmado: report.skuArmado || '',
     descripcionArmado: report.descripcionArmado || '',
-    clavesIndividuales: componentesStr,
+    clavesIndividuales: componentesStr || '',
     piezasInspeccionadas: muestra,
-    observacionesCalidad: obsCalidad,
-    nombreArchivoLocal: localPackageName,
+    observacionesCalidad: obsCalidad || '',
+    nombreArchivoLocal: localPackageName || '',
     dictamen: report.status || 'APROBADO',
     inspector: report.firmaCalidad?.nombre || report.inspectorName || 'Inspector Calidad',
   };
@@ -534,9 +611,8 @@ export async function exportInspectionToSharepointExcel(
     } catch {
       errorDetail = response.statusText;
     }
-    throw new Error(
-      `Power Automate devolvió un error (${response.status}): ${errorDetail || 'No se pudo completar la operación en SharePoint'}`
-    );
+    const formattedError = formatSharePointErrorMessage(response.status, errorDetail);
+    throw new Error(formattedError);
   }
 
   // Registrar localmente que esta OT ya fue enviada para activar el bloqueo anti-duplicados
@@ -657,7 +733,7 @@ export async function testPowerAutomateWebhookConnection(
         success: false,
         statusCode: response.status,
         latencyMs,
-        message: `El webhook respondió con error HTTP ${response.status}: ${detail || 'Respuesta no válida'}.`,
+        message: formatSharePointErrorMessage(response.status, detail),
       };
     }
   } catch (err: any) {

@@ -13,6 +13,7 @@ import {
   isOTExportedToSharepoint,
   deleteInspectionFromSharepoint,
   checkSharePointPokaYoke,
+  isDirectApiAuthError,
 } from './utils/sharepointExport';
 
 import { Header } from './components/Header';
@@ -737,6 +738,20 @@ export default function App() {
                 <p className="mt-1 text-[11px] text-neutral-200 leading-relaxed">
                   {sharePointNotification.details}
                 </p>
+              )}
+              {sharePointNotification.type === 'error' && isDirectApiAuthError(sharePointNotification.details) && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSharePointNotification(null);
+                      setIsSharePointModalOpen(true);
+                    }}
+                    className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-[11px] transition shadow cursor-pointer inline-flex items-center space-x-1"
+                  >
+                    <span>Solucionar Error 401 en Power Automate →</span>
+                  </button>
+                </div>
               )}
             </div>
             <button

@@ -40,9 +40,12 @@ import {
   getInspectionLocalPackageFileName,
   getStoredPowerAutomateWebhookUrl,
   saveStoredPowerAutomateWebhookUrl,
+  isDirectApiAuthError,
+  isPowerAutomateMissingSig,
 } from '../../utils/sharepointExport';
 import { exportInspectionPackageZip } from '../../utils/excelExport';
 import { generateInspectionWordDocument } from '../../utils/wordExport';
+import { PowerAutomateHelpModal } from '../PowerAutomateHelpModal';
 
 interface MobileStep5SharePointProps {
   report: QualityReport;
@@ -81,6 +84,7 @@ export const MobileStep5SharePoint: React.FC<MobileStep5SharePointProps> = ({
 
   // Notifications
   const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string; details?: string } | null>(null);
+  const [showPowerAutomateHelpModal, setShowPowerAutomateHelpModal] = useState(false);
 
   const cleanMaquila = getCleanNoMaquila(report);
   const cleanPedido = getCleanNoPedido(report);
@@ -390,10 +394,22 @@ export const MobileStep5SharePoint: React.FC<MobileStep5SharePointProps> = ({
           ) : (
             <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
           )}
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h4 className="font-black uppercase tracking-wide text-white">{feedbackNotice.message}</h4>
             {feedbackNotice.details && (
               <p className="mt-0.5 text-[11px] opacity-90 leading-relaxed font-sans">{feedbackNotice.details}</p>
+            )}
+            {feedbackNotice.type === 'error' && isDirectApiAuthError(feedbackNotice.details) && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPowerAutomateHelpModal(true)}
+                  className="py-1.5 px-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-[11px] transition shadow flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Ver Solución Paso a Paso y Cambiar URL</span>
+                </button>
+              </div>
             )}
           </div>
           <button
@@ -655,15 +671,35 @@ export const MobileStep5SharePoint: React.FC<MobileStep5SharePointProps> = ({
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
                 placeholder="https://default...powerautomate/automations/..."
-                className="w-full p-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl font-mono text-[10px] text-slate-800 focus:outline-slate-900"
+                className="w-full p-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl font-mono text-[10px] text-slate-800 focus:outline-slate-900 break-all"
               />
+
+              {/* Validación Poka-Yoke de firma SAS */}
+              {isPowerAutomateMissingSig(webhookUrl) && (
+                <div className="bg-amber-50 border border-amber-400 p-2.5 rounded-xl text-amber-900 text-[11px] space-y-1">
+                  <p className="font-bold flex items-center space-x-1 text-amber-900">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Atención Poka-Yoke: A esta URL le falta la firma (&sig=...)</span>
+                  </p>
+                  <p className="text-[10px] text-amber-800 leading-tight">
+                    Power Automate devolverá el <strong>Error 401</strong>. Recuerda configurar en Power Automate <em>"¿Quién puede desencadenar el flujo?: Cualquiera"</em> para obtener la clave de acceso.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPowerAutomateHelpModal(true)}
+                    className="text-[10px] text-amber-900 underline font-bold cursor-pointer"
+                  >
+                    Ver cómo solucionarlo paso a paso →
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleSaveWebhook}
-                className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition cursor-pointer active:scale-95"
+                className="flex-1 min-w-[100px] py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition cursor-pointer active:scale-95"
               >
                 Guardar URL
               </button>
@@ -672,10 +708,19 @@ export const MobileStep5SharePoint: React.FC<MobileStep5SharePointProps> = ({
                 type="button"
                 onClick={handleTestPing}
                 disabled={isTestingPing}
-                className="py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                className="flex-1 min-w-[100px] py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 {isTestingPing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
                 <span>Hacer Ping</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPowerAutomateHelpModal(true)}
+                className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-900 font-black rounded-xl text-xs transition flex items-center space-x-1 cursor-pointer active:scale-95"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Guía 401</span>
               </button>
             </div>
 
@@ -747,6 +792,16 @@ export const MobileStep5SharePoint: React.FC<MobileStep5SharePointProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Solución para Error 401 */}
+      <PowerAutomateHelpModal
+        isOpen={showPowerAutomateHelpModal}
+        onClose={() => setShowPowerAutomateHelpModal(false)}
+        onUrlUpdated={(newUrl) => {
+          setWebhookUrl(newUrl);
+          setFeedbackNotice(null);
+        }}
+      />
     </div>
   );
 };

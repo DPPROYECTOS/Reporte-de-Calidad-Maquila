@@ -17,8 +17,11 @@ import {
   Database,
   FileText,
   Sparkles,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { QualityReport } from '../types/qualityReport';
+import { PowerAutomateHelpModal } from './PowerAutomateHelpModal';
 import {
   checkSharePointPokaYoke,
   exportInspectionToSharepointExcel,
@@ -34,6 +37,8 @@ import {
   getCleanNoPedido,
   getCleanFolioOT,
   BatchExportSummary,
+  isDirectApiAuthError,
+  isPowerAutomateMissingSig,
 } from '../utils/sharepointExport';
 
 interface SharePointSyncModalProps {
@@ -58,9 +63,11 @@ export const SharePointSyncModal: React.FC<SharePointSyncModalProps> = ({
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [actionSuccessNotice, setActionSuccessNotice] = useState<string | null>(null);
   const [actionErrorNotice, setActionErrorNotice] = useState<string | null>(null);
+  const [isCopiedPayload, setIsCopiedPayload] = useState(false);
 
   // Estado del webhook y ping
   const [webhookUrl, setWebhookUrl] = useState(() => getStoredPowerAutomateWebhookUrl());
+  const [showPowerAutomateHelpModal, setShowPowerAutomateHelpModal] = useState(false);
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [pingResult, setPingResult] = useState<{
     success: boolean;
@@ -302,14 +309,30 @@ export const SharePointSyncModal: React.FC<SharePointSyncModalProps> = ({
         )}
 
         {actionErrorNotice && (
-          <div className="p-3 bg-red-950 border-b border-red-600 text-red-200 text-xs flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          <div className="p-3 bg-red-950 border-b border-red-600 text-red-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-start sm:items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5 sm:mt-0" />
               <span>{actionErrorNotice}</span>
             </div>
-            <button type="button" onClick={() => setActionErrorNotice(null)} className="text-red-400 hover:text-white">
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
+              {isDirectApiAuthError(actionErrorNotice) && (
+                <button
+                  type="button"
+                  onClick={() => setShowPowerAutomateHelpModal(true)}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-[11px] transition shadow flex items-center space-x-1 cursor-pointer"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>Solucionar Error 401</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActionErrorNotice(null)}
+                className="text-red-400 hover:text-white p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -402,18 +425,51 @@ export const SharePointSyncModal: React.FC<SharePointSyncModalProps> = ({
 
               {/* Mapeo de Tablas & Payload en Vivo */}
               <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
-                <span className="font-bold text-slate-300 block text-[11px] uppercase tracking-wide">
-                  📦 Payload que se transmitirá a Power Automate:
-                </span>
-                <div className="bg-black/90 p-3 rounded-lg border border-slate-800 font-mono text-[10px] text-slate-300 space-y-1 overflow-x-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-slate-300 block text-[11px] uppercase tracking-wide">
+                      📦 Payload Transmitido (13 Campos Oficiales):
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+                      Esquema Power Automate
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(previewPayload, null, 2));
+                      setIsCopiedPayload(true);
+                      setTimeout(() => setIsCopiedPayload(false), 2500);
+                    }}
+                    className="flex items-center space-x-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10.5px] font-medium transition cursor-pointer border border-slate-700"
+                  >
+                    {isCopiedPayload ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400 font-bold">Copiado</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar JSON</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="bg-black/90 p-3 rounded-lg border border-slate-800 font-mono text-[10px] text-slate-300 space-y-1 overflow-x-auto max-h-56">
                   <div><span className="text-purple-400">"accion"</span>: <span className="text-amber-300">"{previewPayload.accion}"</span>,</div>
-                  <div><span className="text-purple-400">"numeroMaquila"</span>: <span className="text-emerald-300 font-bold">"{previewPayload.numeroMaquila}"</span> <span className="text-slate-500">// Pestaña REGISTRO (Tabla2)</span>,</div>
-                  <div><span className="text-purple-400">"numeroPedido"</span>: <span className="text-blue-300 font-bold">"{previewPayload.numeroPedido}"</span> <span className="text-slate-500">// Pestaña EVIDENCIAS (Tabla1)</span>,</div>
                   <div><span className="text-purple-400">"folioOT"</span>: <span className="text-amber-300">"{previewPayload.folioOT}"</span>,</div>
+                  <div><span className="text-purple-400">"numeroMaquila"</span>: <span className="text-emerald-300 font-bold">"{previewPayload.numeroMaquila}"</span> <span className="text-slate-500">// REGISTRO (Tabla2)</span>,</div>
+                  <div><span className="text-purple-400">"numeroPedido"</span>: <span className="text-blue-300 font-bold">"{previewPayload.numeroPedido}"</span> <span className="text-slate-500">// EVIDENCIAS (Tabla1)</span>,</div>
+                  <div><span className="text-purple-400">"fecha"</span>: <span className="text-emerald-300">"{previewPayload.fecha}"</span>,</div>
                   <div><span className="text-purple-400">"claveArmado"</span>: <span className="text-white">"{previewPayload.claveArmado}"</span>,</div>
-                  <div><span className="text-purple-400">"piezasInspeccionadas"</span>: <span className="text-amber-400 font-bold">{previewPayload.piezasInspeccionadas}</span>,</div>
+                  <div><span className="text-purple-400">"descripcionArmado"</span>: <span className="text-slate-300">"{previewPayload.descripcionArmado}"</span>,</div>
+                  <div><span className="text-purple-400">"clavesIndividuales"</span>: <span className="text-slate-300">"{previewPayload.clavesIndividuales}"</span>,</div>
+                  <div><span className="text-purple-400">"piezasInspeccionadas"</span>: <span className="text-amber-400 font-bold">{previewPayload.piezasInspeccionadas}</span> <span className="text-slate-500">// integer</span>,</div>
+                  <div><span className="text-purple-400">"observacionesCalidad"</span>: <span className="text-slate-300">"{previewPayload.observacionesCalidad}"</span>,</div>
+                  <div><span className="text-purple-400">"nombreArchivoLocal"</span>: <span className="text-cyan-300">"{previewPayload.nombreArchivoLocal}"</span>,</div>
                   <div><span className="text-purple-400">"dictamen"</span>: <span className="text-emerald-400 font-bold">"{previewPayload.dictamen}"</span>,</div>
-                  <div><span className="text-purple-400">"nombreArchivoLocal"</span>: <span className="text-cyan-300">"{previewPayload.nombreArchivoLocal}"</span></div>
+                  <div><span className="text-purple-400">"inspector"</span>: <span className="text-slate-200">"{previewPayload.inspector}"</span></div>
                 </div>
               </div>
 
@@ -554,9 +610,30 @@ export const SharePointSyncModal: React.FC<SharePointSyncModalProps> = ({
                     placeholder="https://prod-XX.westus.logic.azure.com:443/workflows/..."
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white font-mono focus:ring-2 focus:ring-amber-400 focus:outline-none"
                   />
+
+                  {/* Validación de Firma SAS */}
+                  {isPowerAutomateMissingSig(webhookUrl) && (
+                    <div className="bg-amber-950/60 border border-amber-500/50 text-amber-200 p-2.5 rounded-xl text-xs space-y-1.5 animate-in fade-in">
+                      <p className="font-bold flex items-center space-x-1.5 text-amber-300 text-[11.5px]">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Atención Poka-Yoke: A esta URL le falta la firma pública (&sig=...)</span>
+                      </p>
+                      <p className="text-[11px] text-amber-200/90 leading-tight">
+                        Power Automate rechazará las peticiones con <strong>Error 401 (DirectApiAuthorizationRequired)</strong>.
+                        Para resolverlo, en Power Automate cambia <em>"¿Quién puede desencadenar el flujo?"</em> a <strong>"Cualquiera" (Anyone)</strong> y vuelve a copiar la URL completa.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowPowerAutomateHelpModal(true)}
+                        className="text-[11px] text-cyan-300 hover:text-cyan-200 underline font-bold cursor-pointer inline-block"
+                      >
+                        Ver guía paso a paso para corregirlo en Power Automate →
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex items-center space-x-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <button
                     type="button"
                     onClick={handleSaveWebhook}
@@ -582,6 +659,15 @@ export const SharePointSyncModal: React.FC<SharePointSyncModalProps> = ({
                         <span>Probar Conexión (Ping)</span>
                       </>
                     )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPowerAutomateHelpModal(true)}
+                    className="py-1.5 px-3 bg-amber-900/60 hover:bg-amber-800 border border-amber-600 text-amber-100 font-bold rounded-lg transition active:scale-95 text-xs cursor-pointer flex items-center space-x-1"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Guía Error 401</span>
                   </button>
 
                   {webhookSavedToast && (
@@ -649,6 +735,16 @@ export const SharePointSyncModal: React.FC<SharePointSyncModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Asistencia para Error 401 */}
+      <PowerAutomateHelpModal
+        isOpen={showPowerAutomateHelpModal}
+        onClose={() => setShowPowerAutomateHelpModal(false)}
+        onUrlUpdated={(newUrl) => {
+          setWebhookUrl(newUrl);
+          setActionErrorNotice(null);
+        }}
+      />
     </div>
   );
 };
